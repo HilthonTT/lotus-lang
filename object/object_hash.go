@@ -144,6 +144,6 @@ func (h *Hash) Next() (Object, Object, bool) {
 // it to be used naturally in our sprintf/printf primitives.
 //
 // It might also be helpful for embedded users.
-func (h *Hash) ToInterface() interface{} {
+func (h *Hash) ToInterface() any {
 	return "<HASH>"
 }

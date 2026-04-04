@@ -43,6 +43,6 @@ func (o *CompiledFunction) InvokeMethod(method string, env Environment, args ...
 	return nil
 }
 
-func (o *CompiledFunction) ToInterface() interface{} {
+func (o *CompiledFunction) ToInterface() any {
 	return "<COMPILED_FUNCTION>"
 }

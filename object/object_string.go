@@ -109,6 +109,6 @@ func (s *String) Next() (Object, Object, bool) {
 // it to be used naturally in our sprintf/printf primitives.
 //
 // It might also be helpful for embedded users.
-func (s *String) ToInterface() interface{} {
+func (s *String) ToInterface() any {
 	return s.Value
 }

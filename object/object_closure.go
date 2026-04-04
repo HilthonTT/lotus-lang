@@ -41,6 +41,6 @@ func (o *Closure) InvokeMethod(method string, env Environment, args ...Object) O
 	return nil
 }
 
-func (o *Closure) ToInterface() interface{} {
+func (o *Closure) ToInterface() any {
 	return "<CLOSURE>"
 }

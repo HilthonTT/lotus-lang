@@ -59,6 +59,6 @@ func (i *Integer) InvokeMethod(method string, env Environment, args ...Object) O
 // it to be used naturally in our sprintf/printf primitives.
 //
 // It might also be helpful for embedded users.
-func (i *Integer) ToInterface() interface{} {
+func (i *Integer) ToInterface() any {
 	return i.Value
 }

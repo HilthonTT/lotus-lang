@@ -199,3 +199,12 @@ func GetBuiltins() []*object.Builtin {
 	}
 	return builtins
 }
+
+func GetBuiltinByName(name string) *BuiltinDef {
+	for _, def := range Builtins {
+		if def.Name == name {
+			return &def
+		}
+	}
+	return nil
+}

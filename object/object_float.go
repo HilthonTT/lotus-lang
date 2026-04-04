@@ -58,6 +58,6 @@ func (f *Float) InvokeMethod(method string, env Environment, args ...Object) Obj
 // it to be used naturally in our sprintf/printf primitives.
 //
 // It might also be helpful for embedded users.
-func (f *Float) ToInterface() interface{} {
+func (f *Float) ToInterface() any {
 	return f.Value
 }

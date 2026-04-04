@@ -23,6 +23,6 @@ func (n *Nil) InvokeMethod(method string, env Environment, args ...Object) Objec
 // it to be used naturally in our sprintf/printf primitives.
 //
 // It might also be helpful for embedded users.
-func (n *Nil) ToInterface() interface{} {
+func (n *Nil) ToInterface() any {
 	return "<NIL>"
 }

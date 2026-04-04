@@ -68,6 +68,6 @@ func (m *Map) InvokeMethod(method string, env Environment, args ...Object) Objec
 	return nil
 }
 
-func (m *Map) ToInterface() interface{} {
+func (m *Map) ToInterface() any {
 	return "<MAP>"
 }

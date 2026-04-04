@@ -61,6 +61,6 @@ func (b *Boolean) InvokeMethod(method string, env Environment, args ...Object) O
 // it to be used naturally in our sprintf/printf primitives.
 //
 // It might also be helpful for embedded users.
-func (b *Boolean) ToInterface() interface{} {
+func (b *Boolean) ToInterface() any {
 	return b.Value
 }

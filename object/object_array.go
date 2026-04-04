@@ -83,6 +83,6 @@ func (ao *Array) Next() (Object, Object, bool) {
 // it to be used naturally in our sprintf/printf primitives.
 //
 // It might also be helpful for embedded users.
-func (ao *Array) ToInterface() interface{} {
+func (ao *Array) ToInterface() any {
 	return "<ARRAY>"
 }
