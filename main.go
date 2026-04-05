@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/hilthontt/lotus/ast"
+	"github.com/hilthontt/lotus/code"
 	"github.com/hilthontt/lotus/compiler"
 	"github.com/hilthontt/lotus/evaluator"
 	"github.com/hilthontt/lotus/lexer"
@@ -17,8 +18,10 @@ import (
 )
 
 func main() {
-	engine := flag.String("engine", "vm", "Engine options are \"vm\" or \"eval\"")
-	console := flag.Bool("console", false, "Provide console flag to enter interactive repl")
+	engine := flag.String("engine", "vm", `Execution engine: "vm" (bytecode) or "eval" (tree-walking)`)
+	console := flag.Bool("console", false, "Start an interactive REPL session")
+	dis := flag.Bool("dis", false, "Disassemble a Lotus file instead of running it")
+	annotated := flag.Bool("annotated", false, "Use annotated disassembly output (requires --dis)")
 	help := flag.Bool("help", false, "Show this help message")
 	ver := flag.Bool("version", false, "Print version information")
 
@@ -36,6 +39,12 @@ func main() {
 			os.Exit(1)
 		}
 		repl.Start(os.Stdin, os.Stdout, engine)
+	case *dis:
+		if len(flag.Args()) != 1 {
+			fmt.Fprintln(os.Stderr, "error: expected a file path\nUsage: lotus --dis [--annotated] <file>")
+			os.Exit(1)
+		}
+		disassembleFile(flag.Args()[0], *annotated)
 	default:
 		if err := validateEngine(*engine); err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -57,13 +66,7 @@ func validateEngine(engine string) error {
 }
 
 func runFile(filePath, engine string) {
-	contents, err := os.ReadFile(filePath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: could not read file %q: %s\n", filePath, err)
-		os.Exit(1)
-	}
-
-	program := parse(string(contents))
+	program := mustParse(filePath)
 
 	var result object.Object
 	if engine == "vm" {
@@ -77,42 +80,92 @@ func runFile(filePath, engine string) {
 	}
 }
 
-func parse(src string) *ast.Program {
-	l := lexer.New(src)
-	p := parser.New(l)
-	return p.ParseProgram()
+func disassembleFile(filePath string, annotated bool) {
+	program := mustParse(filePath)
+
+	comp := compiler.New()
+	if err := comp.Compile(program); err != nil {
+		fmt.Fprintf(os.Stderr, "compiler error: %s\n", err)
+		os.Exit(1)
+	}
+
+	bytecode := comp.Bytecode()
+
+	// Print top-level instructions.
+	fmt.Println("=== main ===")
+	if annotated {
+		fmt.Print(code.DisassembleAnnotated(bytecode.Instructions))
+	} else {
+		fmt.Print(code.Disassemble(bytecode.Instructions))
+	}
+
+	// Print each compiled function's instructions.
+	for i, obj := range bytecode.Constants {
+		fn, ok := obj.(*object.CompiledFunction)
+		if !ok {
+			continue
+		}
+		name := fn.Name
+		if name == "" {
+			name = fmt.Sprintf("<fn:%d>", i)
+		}
+		fmt.Printf("\n=== %s ===\n", name)
+		if annotated {
+			fmt.Print(code.DisassembleAnnotated(fn.Instructions))
+		} else {
+			fmt.Print(code.Disassemble(fn.Instructions))
+		}
+	}
 }
 
-// Evaluate the AST with evaluator
+func mustParse(filePath string) *ast.Program {
+	contents, err := os.ReadFile(filePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: could not read file %q: %s\n", filePath, err)
+		os.Exit(1)
+	}
+	l := lexer.New(string(contents))
+	p := parser.New(l)
+	program := p.ParseProgram()
+	if errs := p.Errors(); len(errs) != 0 {
+		fmt.Fprintln(os.Stderr, "parse errors:")
+		for _, e := range errs {
+			fmt.Fprintf(os.Stderr, "\t%s\n", e)
+		}
+		os.Exit(1)
+	}
+	return program
+}
+
 func evaluateAst(program *ast.Program) object.Object {
 	env := object.NewEnvironment()
 	return evaluator.Eval(program, env)
 }
 
-// Compile program to bytecode, pass to VM, and run. Returns the last popped stack element (result)
 func compileBytecodeAndRun(program *ast.Program) object.Object {
 	comp := compiler.New()
-
 	if err := comp.Compile(program); err != nil {
-		fmt.Printf("compiler error: %s", err)
+		fmt.Fprintf(os.Stderr, "compiler error: %s\n", err)
 		os.Exit(1)
 	}
 
-	vm := vm.New(comp.Bytecode())
-	if err := vm.Run(); err != nil {
-		fmt.Printf("vm error: %s", err)
+	machine := vm.New(comp.Bytecode())
+	if err := machine.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "vm error: %s\n", err)
 		os.Exit(1)
 	}
 
-	return vm.LastPoppedStackElement()
+	return machine.LastPoppedStackElement()
 }
 
 func printHelp() {
 	fmt.Print(repl.Logo)
 	fmt.Printf("  Version: %s\n\n", version.Version)
 	fmt.Println("Usage:")
-	fmt.Println("  lotus [options] <file>   Run a Lotus source file")
-	fmt.Println("  lotus --console          Start the interactive REPL")
+	fmt.Println("  lotus [options] <file>          Run a Lotus source file")
+	fmt.Println("  lotus --dis <file>              Disassemble a Lotus source file")
+	fmt.Println("  lotus --dis --annotated <file>  Disassemble with inline comments")
+	fmt.Println("  lotus --console                 Start the interactive REPL")
 	fmt.Println()
 	fmt.Println("Options:")
 	flag.PrintDefaults()
@@ -120,6 +173,8 @@ func printHelp() {
 	fmt.Println("Examples:")
 	fmt.Println("  lotus program.lotus")
 	fmt.Println("  lotus --engine eval program.lotus")
+	fmt.Println("  lotus --dis program.lotus")
+	fmt.Println("  lotus --dis --annotated program.lotus")
 	fmt.Println("  lotus --console")
 	fmt.Println("  lotus --console --engine eval")
 	fmt.Println("  lotus --version")

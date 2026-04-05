@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/hilthontt/lotus/code"
 )
 
 type CompiledFunction struct {
-	Instructions []byte
+	Instructions code.Instructions
 	NumLocals    int
 	NumParams    int
 	Name         string

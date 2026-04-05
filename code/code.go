@@ -7,36 +7,19 @@ import (
 	"strings"
 )
 
-// Instructions - Type alias for a slice of byte.
+// Instructions is a slice of bytecode bytes.
 type Instructions []byte
 
+// String returns a human-readable disassembly, one instruction per line.
 func (ins Instructions) String() string {
-	var out bytes.Buffer
-
-	i := 0
-
-	for i < len(ins) {
-		def, err := Lookup(ins[i])
-		if err != nil {
-			fmt.Fprintf(&out, "ERROR: %s\n", err)
-			continue
-		}
-
-		operands, read := ReadOperands(def, ins[i+1:])
-
-		fmt.Fprintf(&out, "%04d %s\n", i, ins.fmtInstruction(def, operands))
-
-		i += 1 + read
-	}
-
-	return out.String()
+	return Disassemble(ins)
 }
 
 func (ins Instructions) fmtInstruction(def *Definition, operands []int) string {
 	operandCount := len(def.OperandWidths)
 
 	if len(operands) != operandCount {
-		return fmt.Sprintf("ERROR: operand len %d does not match defined %d\n", len(operands), operandCount)
+		return fmt.Sprintf("ERROR: operand len %d does not match defined %d", len(operands), operandCount)
 	}
 
 	switch operandCount {
@@ -48,7 +31,96 @@ func (ins Instructions) fmtInstruction(def *Definition, operands []int) string {
 		return fmt.Sprintf("%s %d %d", def.Name, operands[0], operands[1])
 	}
 
-	return fmt.Sprintf("ERROR: unhandled operandCount for %s\n", def.Name)
+	return fmt.Sprintf("ERROR: unhandled operandCount for %s", def.Name)
+}
+
+// Disassemble returns a human-readable disassembly of the given instructions.
+func Disassemble(ins Instructions) string {
+	var out bytes.Buffer
+
+	i := 0
+	for i < len(ins) {
+		def, err := Lookup(ins[i])
+		if err != nil {
+			fmt.Fprintf(&out, "%04d ERROR: %s\n", i, err)
+			i++
+			continue
+		}
+
+		operands, read := ReadOperands(def, ins[i+1:])
+		fmt.Fprintf(&out, "%04d %s\n", i, ins.fmtInstruction(def, operands))
+
+		i += 1 + read
+	}
+
+	return out.String()
+}
+
+// DisassembleAnnotated returns a disassembly with inline comments describing each opcode.
+func DisassembleAnnotated(ins Instructions) string {
+	var out strings.Builder
+
+	i := 0
+	for i < len(ins) {
+		def, err := Lookup(ins[i])
+		if err != nil {
+			fmt.Fprintf(&out, "%04d ERROR: %s\n", i, err)
+			i++
+			continue
+		}
+
+		operands, read := ReadOperands(def, ins[i+1:])
+		line := fmt.Sprintf("%04d %s", i, ins.fmtInstruction(def, operands))
+
+		if comment, ok := opcodeComments[Opcode(ins[i])]; ok {
+			fmt.Fprintf(&out, "%-30s // %s\n", line, comment)
+		} else {
+			fmt.Fprintf(&out, "%s\n", line)
+		}
+
+		i += 1 + read
+	}
+
+	return out.String()
+}
+
+// opcodeComments provides short inline descriptions for the disassembler.
+var opcodeComments = map[Opcode]string{
+	OpConstant:   "push constant from pool",
+	OpPop:        "discard top of stack",
+	OpTrue:       "push true",
+	OpFalse:      "push false",
+	OpNil:        "push nil",
+	OpAdd:        "integer/float addition",
+	OpSub:        "subtraction",
+	OpMul:        "multiplication",
+	OpDiv:        "division",
+	OpMod:        "modulo",
+	OpNegate:     "unary minus",
+	OpEqual:      "equality check",
+	OpNotEqual:   "inequality check",
+	OpGreater:    "greater-than comparison",
+	OpGreaterEq:  "greater-than-or-equal comparison",
+	OpNot:        "logical NOT",
+	OpJump:       "unconditional jump",
+	OpJumpFalse:  "jump if falsy (pops)",
+	OpGetGlobal:  "load global variable",
+	OpSetGlobal:  "store global variable",
+	OpGetLocal:   "load local variable",
+	OpSetLocal:   "store local variable",
+	OpGetFree:    "load captured (free) variable",
+	OpGetBuiltin: "load built-in function by index",
+	OpArray:      "build array from N stack elements",
+	OpMap:        "build map from N*2 stack elements",
+	OpIndex:      "index into array/map/string",
+	OpIndexSet:   "assign to array/map index",
+	OpClosure:    "create closure with free variables",
+	OpCall:       "call function with N arguments",
+	OpReturn:     "return value from function",
+	OpReturnNil:  "return nil from function",
+	OpLoop:       "jump backward (loop)",
+	OpConcat:     "string concatenation",
+	OpSetFree:    "update captured (free) variable",
 }
 
 type Opcode byte
@@ -90,11 +162,9 @@ const (
 	OpGetBuiltin // Get builtin by index
 
 	// Data structures
-	OpArray // Build array from N elements on stack
-	OpMap   // Build map from N*2 elements on stack
-	OpIndex // Index operation
-
-	// Index assignment
+	OpArray    // Build array from N elements on stack
+	OpMap      // Build map from N*2 elements on stack
+	OpIndex    // Index operation
 	OpIndexSet // stack: [obj, index, value] -> sets obj[index] = value
 
 	// Functions
@@ -156,20 +226,16 @@ var definitions = map[Opcode]*Definition{
 	OpSetFree:    {"OpSetFree", []int{1}},
 }
 
+// Lookup finds the Definition for a given opcode byte.
 func Lookup(op byte) (*Definition, error) {
 	def, ok := definitions[Opcode(op)]
 	if !ok {
-		return nil, fmt.Errorf("Opcode %d undefined", op)
+		return nil, fmt.Errorf("opcode %d undefined", op)
 	}
-
 	return def, nil
 }
 
-// Make creates our bytecode. First we find out how long the resulting instruction is going
-// to be. That allows us to allocate a byte slice with the proper length. We then add the
-// Opcode as its first byte by casting it into one. Then we iterate over the defined OperandWidths,
-// take the matching element from operands, and put it in the instruction. After encoding the two
-// byte operand in big endian, we increment offset by its width.
+// Make encodes an opcode and its operands into a bytecode instruction.
 func Make(op Opcode, operands ...int) []byte {
 	def, ok := definitions[op]
 	if !ok {
@@ -185,8 +251,10 @@ func Make(op Opcode, operands ...int) []byte {
 	instruction[0] = byte(op)
 
 	offset := 1
-
 	for i, o := range operands {
+		if i >= len(def.OperandWidths) {
+			break // ignore extra operands beyond what the definition expects
+		}
 		width := def.OperandWidths[i]
 		switch width {
 		case 2:
@@ -200,6 +268,7 @@ func Make(op Opcode, operands ...int) []byte {
 	return instruction
 }
 
+// ReadOperands decodes operands from an instruction stream given its definition.
 func ReadOperands(def *Definition, ins Instructions) ([]int, int) {
 	operands := make([]int, len(def.OperandWidths))
 	offset := 0
@@ -211,43 +280,18 @@ func ReadOperands(def *Definition, ins Instructions) ([]int, int) {
 		case 1:
 			operands[i] = int(ReadUint8(ins[offset:]))
 		}
-
 		offset += width
 	}
 
 	return operands, offset
 }
 
-// ReadUint16 turns a byte sequence (Instructions) into a uint16
+// ReadUint16 decodes a big-endian uint16 from an instruction stream.
 func ReadUint16(ins Instructions) uint16 {
 	return binary.BigEndian.Uint16(ins)
 }
 
-// ReadUint8 turns a byte sequence (Instructions) into a uint16
+// ReadUint8 decodes a uint8 from an instruction stream.
 func ReadUint8(ins Instructions) uint8 {
 	return uint8(ins[0])
-}
-
-func Disassemble(ins Instructions) string {
-	var out strings.Builder
-
-	i := 0
-	for i < len(ins) {
-		def, err := Lookup(ins[i])
-		if err != nil {
-			fmt.Fprintf(&out, "%04d ERROR: %s\n", i, err)
-			i++
-			continue
-		}
-
-		operands, read := ReadOperands(def, ins[i+1:])
-		fmt.Fprintf(&out, "%04d %s", i, def.Name)
-		for _, o := range operands {
-			fmt.Fprintf(&out, " %d", o)
-		}
-		out.WriteString("\n")
-		i += 1 + read
-	}
-
-	return out.String()
 }
