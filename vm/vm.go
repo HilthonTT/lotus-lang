@@ -24,8 +24,8 @@ var True = &object.Boolean{Value: true}
 // False - pointer to a Lotus object.Boolean with value false.
 var False = &object.Boolean{Value: false}
 
-// Null - pointer to a Lotus object.Nil.
-var Null = &object.Nil{}
+// Nil - pointer to a Lotus object.Nil.
+var Nil = &object.Nil{}
 
 // VM defines our Virtual Machine.
 type VM struct {
@@ -120,7 +120,7 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpNil:
-			if err := vm.push(Null); err != nil {
+			if err := vm.push(Nil); err != nil {
 				return err
 			}
 
@@ -300,7 +300,7 @@ func (vm *VM) Run() error {
 			frame := vm.popFrame()
 			vm.sp = frame.basePointer - 1
 
-			if err := vm.push(Null); err != nil {
+			if err := vm.push(Nil); err != nil {
 				return err
 			}
 
@@ -527,7 +527,7 @@ func (vm *VM) executeArrayIndex(array, index object.Object) error {
 		i = max + i
 	}
 	if i < 0 || i >= max {
-		return vm.push(Null)
+		return vm.push(Nil)
 	}
 
 	return vm.push(arrayObject.Elements[i])
@@ -543,7 +543,7 @@ func (vm *VM) executeMapIndex(m, index object.Object) error {
 
 	pair, ok := mapObject.Pairs[hashable.HashKey()]
 	if !ok {
-		return vm.push(Null)
+		return vm.push(Nil)
 	}
 
 	return vm.push(pair.Value)
@@ -554,7 +554,7 @@ func (vm *VM) executeStringIndex(str, index object.Object) error {
 	i := index.(*object.Integer).Value
 
 	if i < 0 || i >= int64(len(s)) {
-		return vm.push(Null)
+		return vm.push(Nil)
 	}
 
 	return vm.push(&object.String{Value: string(s[i])})
@@ -657,7 +657,7 @@ func (vm *VM) callBuiltin(builtin *object.Builtin, numArgs int) error {
 	if result != nil {
 		return vm.push(result)
 	}
-	return vm.push(Null)
+	return vm.push(Nil)
 }
 
 func (vm *VM) pushClosure(constIndex int, numFree int) error {

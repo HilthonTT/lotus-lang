@@ -130,6 +130,20 @@ func (e *Environment) Set(name string, val Object) Object {
 	return val
 }
 
+func (e *Environment) IsMutable(name string) bool {
+	if r, ok := e.readonly[name]; ok {
+		return !r // found in readonly map → respect the flag
+	}
+	// Not in readonly at all -> if it exists in store, it's mutable
+	if _, exists := e.store[name]; exists {
+		return true
+	}
+	if e.outer != nil {
+		return e.outer.IsMutable(name)
+	}
+	return false // variable doesn't exist anywhere
+}
+
 // SetConst sets the value of a constant by name.
 func (e *Environment) SetConst(name string, val Object) Object {
 

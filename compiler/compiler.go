@@ -608,3 +608,11 @@ func (c *Compiler) replaceLastPopWithReturn() {
 	ins := c.currentInstructions()
 	ins[len(ins)-1] = byte(code.OpReturn)
 }
+
+func NewWithState(s *SymbolTable, constants []object.Object) *Compiler {
+	compiler := New()
+	compiler.symbolTable = s
+	compiler.constants = constants
+
+	return compiler
+}

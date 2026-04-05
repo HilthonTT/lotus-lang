@@ -1,16 +1,15 @@
 package evaluator
 
-import "github.com/hilthontt/lotus/compiler"
+import (
+	"github.com/hilthontt/lotus/compiler"
+	"github.com/hilthontt/lotus/object"
+)
 
-var builtinFunctions = map[string]*compiler.BuiltinDef{
-	"print": compiler.GetBuiltinByName("print"),
-	"len":   compiler.GetBuiltinByName("len"),
-	"push":  compiler.GetBuiltinByName("push"),
-	"pop":   compiler.GetBuiltinByName("pop"),
-	"head":  compiler.GetBuiltinByName("head"),
-	"tail":  compiler.GetBuiltinByName("tail"),
-	"type":  compiler.GetBuiltinByName("type"),
-	"str":   compiler.GetBuiltinByName("str"),
-	"int":   compiler.GetBuiltinByName("int"),
-	"range": compiler.GetBuiltinByName("range"),
+var builtinFunctions map[string]*object.Builtin
+
+func init() {
+	builtinFunctions = make(map[string]*object.Builtin, len(compiler.Builtins))
+	for _, b := range compiler.GetBuiltins() {
+		builtinFunctions[b.Name] = b
+	}
 }

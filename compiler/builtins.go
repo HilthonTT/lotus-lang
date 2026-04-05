@@ -12,6 +12,14 @@ type BuiltinDef struct {
 	Fn   object.BuiltinFunction
 }
 
+func (b *BuiltinDef) Type() object.ObjectType {
+	return object.BUILTIN_OBJ
+}
+
+func (b *BuiltinDef) Inspect() string {
+	return fmt.Sprintf("builtin function: %s", b.Name)
+}
+
 var Builtins = []BuiltinDef{
 	{
 		Name: "print",
