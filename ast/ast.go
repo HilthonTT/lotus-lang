@@ -279,7 +279,6 @@ func (s *AssignStatement) TokenLiteral() string {
 }
 
 // String returns this object as a string.
-
 func (as *AssignStatement) String() string {
 	var out bytes.Buffer
 	out.WriteString(as.Name.String())
@@ -359,7 +358,7 @@ func (e *StringLiteral) TokenLiteral() string {
 }
 
 func (e *StringLiteral) String() string {
-	return "\"" + e.Value + "\""
+	return e.Value
 }
 
 type BooleanLiteral struct {
