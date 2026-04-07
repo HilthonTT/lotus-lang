@@ -3,16 +3,19 @@ package object
 type ObjectType string
 
 const (
-	INTEGER_OBJ ObjectType = "INTEGER"
-	FLOAT_OBJ   ObjectType = "FLOAT"
-	BOOLEAN_OBJ ObjectType = "BOOLEAN"
-	STRING_OBJ  ObjectType = "STRING"
-	NIL_OBJ     ObjectType = "NIL"
-	ARRAY_OBJ   ObjectType = "ARRAY"
-	MAP_OBJ     ObjectType = "MAP"
-	CLOSURE_OBJ ObjectType = "CLOSURE"
-	BUILTIN_OBJ ObjectType = "BUILTIN"
-	HASH_OBJ    ObjectType = "HASH"
+	INTEGER_OBJ  ObjectType = "INTEGER"
+	FLOAT_OBJ    ObjectType = "FLOAT"
+	BOOLEAN_OBJ  ObjectType = "BOOLEAN"
+	STRING_OBJ   ObjectType = "STRING"
+	NIL_OBJ      ObjectType = "NIL"
+	ARRAY_OBJ    ObjectType = "ARRAY"
+	MAP_OBJ      ObjectType = "MAP"
+	CLOSURE_OBJ  ObjectType = "CLOSURE"
+	BUILTIN_OBJ  ObjectType = "BUILTIN"
+	HASH_OBJ     ObjectType = "HASH"
+	CLASS_OBJ    ObjectType = "CLASS"
+	INSTANCE_OBJ ObjectType = "INSTANCE"
+	SUPER_OBJ    ObjectType = "SUPER"
 )
 
 // Object is the interface that all of our various object-types must implemented.

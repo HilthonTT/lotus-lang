@@ -75,6 +75,12 @@ const (
 	NIL      TokenType = "NIL"
 	BREAK    TokenType = "BREAK"
 	CONTINUE TokenType = "CONTINUE"
+
+	// OOP keywords
+	CLASS   TokenType = "CLASS"
+	EXTENDS TokenType = "EXTENDS"
+	SELF    TokenType = "SELF"
+	SUPER   TokenType = "SUPER"
 )
 
 var keywords = map[string]TokenType{
@@ -92,6 +98,10 @@ var keywords = map[string]TokenType{
 	"nil":      NIL,
 	"break":    BREAK,
 	"continue": CONTINUE,
+	"class":    CLASS,
+	"extends":  EXTENDS,
+	"self":     SELF,
+	"super":    SUPER,
 }
 
 func LookupIdentifier(identifier string) TokenType {

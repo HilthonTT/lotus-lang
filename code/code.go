@@ -86,41 +86,48 @@ func DisassembleAnnotated(ins Instructions) string {
 
 // opcodeComments provides short inline descriptions for the disassembler.
 var opcodeComments = map[Opcode]string{
-	OpConstant:   "push constant from pool",
-	OpPop:        "discard top of stack",
-	OpTrue:       "push true",
-	OpFalse:      "push false",
-	OpNil:        "push nil",
-	OpAdd:        "integer/float addition",
-	OpSub:        "subtraction",
-	OpMul:        "multiplication",
-	OpDiv:        "division",
-	OpMod:        "modulo",
-	OpNegate:     "unary minus",
-	OpEqual:      "equality check",
-	OpNotEqual:   "inequality check",
-	OpGreater:    "greater-than comparison",
-	OpGreaterEq:  "greater-than-or-equal comparison",
-	OpNot:        "logical NOT",
-	OpJump:       "unconditional jump",
-	OpJumpFalse:  "jump if falsy (pops)",
-	OpGetGlobal:  "load global variable",
-	OpSetGlobal:  "store global variable",
-	OpGetLocal:   "load local variable",
-	OpSetLocal:   "store local variable",
-	OpGetFree:    "load captured (free) variable",
-	OpGetBuiltin: "load built-in function by index",
-	OpArray:      "build array from N stack elements",
-	OpMap:        "build map from N*2 stack elements",
-	OpIndex:      "index into array/map/string",
-	OpIndexSet:   "assign to array/map index",
-	OpClosure:    "create closure with free variables",
-	OpCall:       "call function with N arguments",
-	OpReturn:     "return value from function",
-	OpReturnNil:  "return nil from function",
-	OpLoop:       "jump backward (loop)",
-	OpConcat:     "string concatenation",
-	OpSetFree:    "update captured (free) variable",
+	OpConstant:     "push constant from pool",
+	OpPop:          "discard top of stack",
+	OpTrue:         "push true",
+	OpFalse:        "push false",
+	OpNil:          "push nil",
+	OpAdd:          "integer/float addition",
+	OpSub:          "subtraction",
+	OpMul:          "multiplication",
+	OpDiv:          "division",
+	OpMod:          "modulo",
+	OpNegate:       "unary minus",
+	OpEqual:        "equality check",
+	OpNotEqual:     "inequality check",
+	OpGreater:      "greater-than comparison",
+	OpGreaterEq:    "greater-than-or-equal comparison",
+	OpNot:          "logical NOT",
+	OpJump:         "unconditional jump",
+	OpJumpFalse:    "jump if falsy (pops)",
+	OpGetGlobal:    "load global variable",
+	OpSetGlobal:    "store global variable",
+	OpGetLocal:     "load local variable",
+	OpSetLocal:     "store local variable",
+	OpGetFree:      "load captured (free) variable",
+	OpGetBuiltin:   "load built-in function by index",
+	OpArray:        "build array from N stack elements",
+	OpMap:          "build map from N*2 stack elements",
+	OpIndex:        "index into array/map/string",
+	OpIndexSet:     "assign to array/map index",
+	OpClosure:      "create closure with free variables",
+	OpCall:         "call function with N arguments",
+	OpReturn:       "return value from function",
+	OpReturnNil:    "return nil from function",
+	OpLoop:         "jump backward (loop)",
+	OpConcat:       "string concatenation",
+	OpSetFree:      "update captured (free) variable",
+	OpNewClass:     "create a new class object",
+	OpSetSuper:     "pop super+class, link superclass, push class",
+	OpDefineMethod: "pop closure+class, add method to class, push class",
+	OpGetField:     "pop instance, push named field value",
+	OpSetField:     "pop value+instance, set named field",
+	OpInvokeMethod: "invoke named method with N args (self is receiver)",
+	OpGetSuper:     "push super-accessor for current self",
 }
 
 type Opcode byte
@@ -185,6 +192,25 @@ const (
 
 	// Mutable closures
 	OpSetFree // Set free (captured) variable
+
+	// OpNewClass creates an empty class. Operand: const_idx of the name string.
+	OpNewClass
+	// OpSetSuper pops the superclass then the class, links them, pushes the class back.
+	OpSetSuper
+	// OpDefineMethod pops the closure then the class, adds the method, pushes the class back.
+	// Operand: const_idx of the method name string.
+	OpDefineMethod
+	// OpGetField pops an instance and pushes the named field (or nil).
+	// Operand: const_idx of the field name string.
+	OpGetField
+	// OpSetField pops (value, instance) and stores value into the named field.
+	// Operand: const_idx of the field name string.
+	OpSetField
+	// OpInvokeMethod performs a method call: receiver is below the N args on the stack.
+	// Operands: const_idx of method name (2 bytes), num_args (1 byte).
+	OpInvokeMethod
+	// OpGetSuper pushes a SuperAccessor for the current method's self/superclass.
+	OpGetSuper
 )
 
 type Definition struct {
@@ -193,43 +219,50 @@ type Definition struct {
 }
 
 var definitions = map[Opcode]*Definition{
-	OpConstant:   {"OpConstant", []int{2}},
-	OpPop:        {"OpPop", []int{}},
-	OpTrue:       {"OpTrue", []int{}},
-	OpFalse:      {"OpFalse", []int{}},
-	OpNil:        {"OpNil", []int{}},
-	OpAdd:        {"OpAdd", []int{}},
-	OpSub:        {"OpSub", []int{}},
-	OpMul:        {"OpMul", []int{}},
-	OpDiv:        {"OpDiv", []int{}},
-	OpMod:        {"OpMod", []int{}},
-	OpNegate:     {"OpNegate", []int{}},
-	OpEqual:      {"OpEqual", []int{}},
-	OpNotEqual:   {"OpNotEqual", []int{}},
-	OpGreater:    {"OpGreater", []int{}},
-	OpGreaterEq:  {"OpGreaterEq", []int{}},
-	OpNot:        {"OpNot", []int{}},
-	OpJump:       {"OpJump", []int{2}},
-	OpJumpFalse:  {"OpJumpFalse", []int{2}},
-	OpGetGlobal:  {"OpGetGlobal", []int{2}},
-	OpSetGlobal:  {"OpSetGlobal", []int{2}},
-	OpGetLocal:   {"OpGetLocal", []int{1}},
-	OpSetLocal:   {"OpSetLocal", []int{1}},
-	OpGetFree:    {"OpGetFree", []int{1}},
-	OpGetBuiltin: {"OpGetBuiltin", []int{1}},
-	OpArray:      {"OpArray", []int{2}},
-	OpMap:        {"OpMap", []int{2}},
-	OpIndex:      {"OpIndex", []int{}},
-	OpIndexSet:   {"OpIndexSet", []int{}},
-	OpClosure:    {"OpClosure", []int{2, 1}}, // const_idx, num_free
-	OpCall:       {"OpCall", []int{1}},
-	OpReturn:     {"OpReturn", []int{}},
-	OpReturnNil:  {"OpReturnNil", []int{}},
-	OpLoop:       {"OpLoop", []int{2}},
-	OpConcat:     {"OpConcat", []int{}},
-	OpSetFree:    {"OpSetFree", []int{1}},
-	OpMinusMinus: {"OpMinusMinus", []int{}},
-	OpPlusPlus:   {"OpPlusPlus", []int{}},
+	OpConstant:     {"OpConstant", []int{2}},
+	OpPop:          {"OpPop", []int{}},
+	OpTrue:         {"OpTrue", []int{}},
+	OpFalse:        {"OpFalse", []int{}},
+	OpNil:          {"OpNil", []int{}},
+	OpAdd:          {"OpAdd", []int{}},
+	OpSub:          {"OpSub", []int{}},
+	OpMul:          {"OpMul", []int{}},
+	OpDiv:          {"OpDiv", []int{}},
+	OpMod:          {"OpMod", []int{}},
+	OpNegate:       {"OpNegate", []int{}},
+	OpEqual:        {"OpEqual", []int{}},
+	OpNotEqual:     {"OpNotEqual", []int{}},
+	OpGreater:      {"OpGreater", []int{}},
+	OpGreaterEq:    {"OpGreaterEq", []int{}},
+	OpNot:          {"OpNot", []int{}},
+	OpJump:         {"OpJump", []int{2}},
+	OpJumpFalse:    {"OpJumpFalse", []int{2}},
+	OpGetGlobal:    {"OpGetGlobal", []int{2}},
+	OpSetGlobal:    {"OpSetGlobal", []int{2}},
+	OpGetLocal:     {"OpGetLocal", []int{1}},
+	OpSetLocal:     {"OpSetLocal", []int{1}},
+	OpGetFree:      {"OpGetFree", []int{1}},
+	OpGetBuiltin:   {"OpGetBuiltin", []int{1}},
+	OpArray:        {"OpArray", []int{2}},
+	OpMap:          {"OpMap", []int{2}},
+	OpIndex:        {"OpIndex", []int{}},
+	OpIndexSet:     {"OpIndexSet", []int{}},
+	OpClosure:      {"OpClosure", []int{2, 1}}, // const_idx, num_free
+	OpCall:         {"OpCall", []int{1}},
+	OpReturn:       {"OpReturn", []int{}},
+	OpReturnNil:    {"OpReturnNil", []int{}},
+	OpLoop:         {"OpLoop", []int{2}},
+	OpConcat:       {"OpConcat", []int{}},
+	OpSetFree:      {"OpSetFree", []int{1}},
+	OpMinusMinus:   {"OpMinusMinus", []int{}},
+	OpPlusPlus:     {"OpPlusPlus", []int{}},
+	OpNewClass:     {"OpNewClass", []int{2}},
+	OpSetSuper:     {"OpSetSuper", []int{}},
+	OpDefineMethod: {"OpDefineMethod", []int{2}},
+	OpGetField:     {"OpGetField", []int{2}},
+	OpSetField:     {"OpSetField", []int{2}},
+	OpInvokeMethod: {"OpInvokeMethod", []int{2, 1}},
+	OpGetSuper:     {"OpGetSuper", []int{}},
 }
 
 // Lookup finds the Definition for a given opcode byte.

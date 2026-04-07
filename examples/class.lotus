@@ -1,0 +1,49 @@
+class Animal {
+    fn init(self, name) {
+        self.name = name
+        self.sound = "..."
+    }
+
+    fn speak(self) {
+        print(self.name + " says " + self.sound)
+    }
+
+    fn describe(self) {
+        print("I am " + self.name)
+    }
+}
+
+class Dog extends Animal {
+    fn init(self, name, breed) {
+        super.init(name)      // calls Animal.init with self bound
+        self.sound = "Woof"
+        self.breed = breed
+    }
+
+    fn speak(self) {
+        super.speak()         // calls Animal.speak with self bound
+        print("(tail wagging)")
+    }
+}
+
+class GuideDog extends Dog {
+    fn init(self, name, breed, owner) {
+        super.init(name, breed)
+        self.owner = owner
+    }
+
+    fn describe(self) {
+        super.describe()      // walks up: GuideDog → Dog → Animal.describe
+        print("My owner is " + self.owner)
+    }
+}
+
+let d = Dog("Rex", "Labrador")
+d.speak()
+d.describe()
+
+let g = GuideDog("Buddy", "Golden Retriever", "Alice")
+g.speak()
+g.describe()
+print("Breed: " + g.breed)
+print("Owner: " + g.owner)

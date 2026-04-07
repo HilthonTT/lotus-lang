@@ -16,9 +16,11 @@ import (
 // implemented, the requirements in regards to concurrency and performance, the host language, and more.
 // We are choosing the way that is easiest to build, understand, extend, etc.
 type Frame struct {
-	closure     *object.Closure
-	ip          int // instruction pointer
-	basePointer int // Keeps track of the stacks pointer's value before we execute a function so we can restore stack to this value after executing
+	closure      *object.Closure
+	ip           int              // instruction pointer
+	basePointer  int              // Keeps track of the stacks pointer's value before we execute a function so we can restore stack to this value after executing
+	initInstance *object.Instance // non-nil when this frame is an __init__ call
+	isMethod     bool             // if true, OpReturn uses sp=basePointer (not basePointer-1)
 }
 
 // Instructions returns the frame's function's instructions

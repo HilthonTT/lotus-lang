@@ -47,6 +47,7 @@ var precedences = map[token.TokenType]int{
 	token.MODULO:   PRODUCT,
 	token.LPAREN:   CALL,
 	token.LBRACKET: INDEX,
+	token.DOT:      INDEX, // field access binds as tightly as indexing
 }
 
 type Parser struct {
@@ -73,6 +74,8 @@ type Parser struct {
 	// infix-based syntax.
 	infixParseFns map[token.TokenType]infixParseFn
 
+	// postfixParseFns holds a map of parsing methods for
+	// postfix-based syntax.
 	postfixParseFns map[token.TokenType]postfixParseFunc
 }
 
@@ -97,6 +100,8 @@ func New(l *lexer.Lexer) *Parser {
 		token.LBRACE:   p.parseMapLiteral,
 		token.IF:       p.parseIfExpression,
 		token.FN:       p.parseFunctionLiteral,
+		token.SELF:     p.parseSelfExpression,
+		token.SUPER:    p.parseSuperExpression,
 	}
 
 	p.infixParseFns = map[token.TokenType]infixParseFn{
@@ -115,6 +120,7 @@ func New(l *lexer.Lexer) *Parser {
 		token.OR:       p.parseInfixExpression,
 		token.LPAREN:   p.parseCallExpression,
 		token.LBRACKET: p.parseIndexExpression,
+		token.DOT:      p.parseDotExpression,
 	}
 
 	p.postfixParseFns = map[token.TokenType]postfixParseFunc{
@@ -206,9 +212,58 @@ func (p *Parser) parseStatement() ast.Statement {
 		return &ast.BreakStatement{Token: p.curToken}
 	case token.CONTINUE:
 		return &ast.ContinueStatement{Token: p.curToken}
+	case token.CLASS:
+		return p.parseClassStatement()
 	default:
 		return p.parseExpressionOrAssignStatement()
 	}
+}
+
+// parseClassStatement handles: class Foo [extends Bar] { fn method(self, ...) { } ... }
+func (p *Parser) parseClassStatement() *ast.ClassStatement {
+	stmt := &ast.ClassStatement{Token: p.curToken}
+
+	if !p.expectPeek(token.IDENT) {
+		return nil
+	}
+
+	stmt.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+
+	if p.peekTokenIs(token.EXTENDS) {
+		p.nextToken() // consume 'extends'
+		if !p.expectPeek(token.IDENT) {
+			return nil
+		}
+		stmt.SuperClass = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+	}
+
+	if !p.expectPeek(token.LBRACE) {
+		return nil
+	}
+	p.nextToken() // move past {
+
+	for !p.curTokenIs(token.RBRACE) && !p.curTokenIs(token.EOF) {
+		if !p.curTokenIs(token.FN) {
+			p.errors = append(p.errors, fmt.Sprintf(
+				"line %d: expected 'fn' in class body, got %s", p.curToken.Line, p.curToken.Type))
+			p.nextToken()
+			continue
+		}
+		expr := p.parseFunctionLiteral()
+		if expr != nil {
+			if fn, ok := expr.(*ast.FunctionLiteral); ok {
+				if fn.Name == "" {
+					p.errors = append(p.errors, fmt.Sprintf(
+						"line %d: class methods must have a name", p.curToken.Line))
+				} else {
+					stmt.Methods = append(stmt.Methods, fn)
+				}
+			}
+		}
+		p.nextToken()
+	}
+
+	return stmt
 }
 
 func (p *Parser) parseLetStatement() *ast.LetStatement {
@@ -323,6 +378,31 @@ func (p *Parser) parseIdentifier() ast.Expression {
 	}
 }
 
+func (p *Parser) parseSelfExpression() ast.Expression {
+	return &ast.SelfExpression{Token: p.curToken}
+}
+
+func (p *Parser) parseSuperExpression() ast.Expression {
+	return &ast.SuperExpression{Token: p.curToken}
+}
+
+// parseDotExpression handles the '.' infix: obj.field or obj.method(args).
+// The call-expression wrapping (if any) is handled by the LPAREN infix as normal.
+func (p *Parser) parseDotExpression(left ast.Expression) ast.Expression {
+	tok := p.curToken // the '.' token
+
+	if !p.expectPeek(token.IDENT) {
+		return nil
+	}
+	field := &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+
+	return &ast.FieldAccessExpression{
+		Token: tok,
+		Left:  left,
+		Field: field,
+	}
+}
+
 func (p *Parser) parseBlockStatement() *ast.BlockStatement {
 	block := &ast.BlockStatement{Token: p.curToken}
 	p.nextToken()
@@ -337,37 +417,54 @@ func (p *Parser) parseBlockStatement() *ast.BlockStatement {
 	return block
 }
 
+// parseExpressionOrAssignStatement handles plain expressions and also detects
+// assignment targets: identifier, index expressions, and now field access.
 func (p *Parser) parseExpressionOrAssignStatement() ast.Statement {
 	expr := p.parseExpression(LOWEST)
 
-	// Check for assignment: ident = expr
 	if p.peekTokenIs(token.ASSIGN) {
-		if ident, ok := expr.(*ast.Identifier); ok {
+		switch target := expr.(type) {
+		case *ast.Identifier:
 			p.nextToken() // consume =
-			p.nextToken() // move to value
+			p.nextToken()
 			val := p.parseExpression(LOWEST)
 			if p.peekTokenIs(token.SEMICOLON) {
 				p.nextToken()
 			}
-			return &ast.AssignStatement{Token: p.curToken, Name: ident, Value: val}
-		}
+			return &ast.AssignStatement{Token: p.curToken, Name: target, Value: val}
 
-		// index assignment: arr[i] = expr
-		if idx, ok := expr.(*ast.IndexExpression); ok {
-			p.nextToken() // consume =
-			p.nextToken() // move to value
+		case *ast.IndexExpression:
+			p.nextToken()
+			p.nextToken()
 			val := p.parseExpression(LOWEST)
 			if p.peekTokenIs(token.SEMICOLON) {
 				p.nextToken()
 			}
-			return &ast.IndexAssignStatement{Token: p.curToken, Left: idx.Left, Index: idx.Index, Value: val}
+			return &ast.IndexAssignStatement{
+				Token: p.curToken,
+				Left:  target.Left,
+				Index: target.Index,
+				Value: val,
+			}
+
+		case *ast.FieldAccessExpression:
+			// self.x = value  (or any obj.field = value)
+			p.nextToken() // consume =
+			p.nextToken()
+			val := p.parseExpression(LOWEST)
+			if p.peekTokenIs(token.SEMICOLON) {
+				p.nextToken()
+			}
+			return &ast.FieldAssignStatement{
+				Token: p.curToken,
+				Left:  target.Left,
+				Field: target.Field,
+				Value: val,
+			}
 		}
 	}
 
-	stmt := &ast.ExpressionStatement{
-		Token:      p.curToken,
-		Expression: expr,
-	}
+	stmt := &ast.ExpressionStatement{Token: p.curToken, Expression: expr}
 	if p.peekTokenIs(token.SEMICOLON) {
 		p.nextToken()
 	}
@@ -485,6 +582,8 @@ func (p *Parser) parseFunctionLiteral() ast.Expression {
 	return lit
 }
 
+// parseFunctionParameters allows 'self' and 'super' keyword tokens as parameter names
+// so that method definitions can include them naturally.
 func (p *Parser) parseFunctionParameters() []*ast.Identifier {
 	var params []*ast.Identifier
 
@@ -493,17 +592,34 @@ func (p *Parser) parseFunctionParameters() []*ast.Identifier {
 		return params
 	}
 	p.nextToken()
+
+	if !p.isParamToken() {
+		p.errors = append(p.errors, fmt.Sprintf(
+			"line %d: expected parameter name, got %s", p.curToken.Line, p.curToken.Type))
+		return nil
+	}
 	params = append(params, &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal})
 
 	for p.peekTokenIs(token.COMMA) {
 		p.nextToken()
 		p.nextToken()
+		if !p.isParamToken() {
+			p.errors = append(p.errors, fmt.Sprintf(
+				"line %d: expected parameter name, got %s", p.curToken.Line, p.curToken.Type))
+			return nil
+		}
 		params = append(params, &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal})
 	}
 	if !p.expectPeek(token.RPAREN) {
 		return nil
 	}
 	return params
+}
+
+// isParamToken returns true if the current token is valid as a parameter name.
+func (p *Parser) isParamToken() bool {
+	t := p.curToken.Type
+	return t == token.IDENT || t == token.SELF
 }
 
 func (p *Parser) parseCallExpression(function ast.Expression) ast.Expression {

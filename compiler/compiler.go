@@ -39,6 +39,8 @@ type Compiler struct {
 	// For break/continue
 	loopStarts []int   // stack of loop start positions
 	breakPos   [][]int // stack of break placeholder positions
+
+	inClass bool // true while compiling class methods (enables 'super')
 }
 
 func New() *Compiler {
@@ -191,6 +193,24 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 		c.emit(code.OpIndexSet)
 
+		// OOP statements
+
+	case *ast.ClassStatement:
+		if err := c.compileClass(node); err != nil {
+			return err
+		}
+
+	case *ast.FieldAssignStatement:
+		// obj.field = value  ->  push obj, push value, OpSetField
+		if err := c.Compile(node.Left); err != nil {
+			return err
+		}
+		if err := c.Compile(node.Value); err != nil {
+			return err
+		}
+		nameIdx := c.addConstant(&object.String{Value: node.Field.Value})
+		c.emit(code.OpSetField, nameIdx)
+
 	case *ast.ReturnStatement:
 		if node.ReturnValue != nil {
 			if err := c.Compile(node.ReturnValue); err != nil {
@@ -320,6 +340,28 @@ func (c *Compiler) Compile(node ast.Node) error {
 			return fmt.Errorf("undefined variable: %s", node.Value)
 		}
 		c.loadSymbol(sym)
+
+	// OOP expressions
+
+	case *ast.SelfExpression:
+		sym, ok := c.symbolTable.Resolve("self")
+		if !ok {
+			return fmt.Errorf("'self' used outside of a method")
+		}
+		c.loadSymbol(sym)
+
+	case *ast.SuperExpression:
+		if !c.inClass {
+			return fmt.Errorf("'super' used outside of a class method")
+		}
+		c.emit(code.OpGetSuper)
+
+	case *ast.FieldAccessExpression:
+		if err := c.Compile(node.Left); err != nil {
+			return err
+		}
+		nameIdx := c.addConstant(&object.String{Value: node.Field.Value})
+		c.emit(code.OpGetField, nameIdx)
 
 	case *ast.PrefixExpression:
 		if err := c.Compile(node.Right); err != nil {
@@ -547,7 +589,33 @@ func (c *Compiler) Compile(node ast.Node) error {
 				c.emit(code.OpGetLocal, outerSym.Index)
 			}
 		}
+
 	case *ast.CallExpression:
+		// Method call: obj.method(args)  or  super.method(args)
+		if fieldAccess, ok := node.Function.(*ast.FieldAccessExpression); ok {
+			if _, isSuper := fieldAccess.Left.(*ast.SuperExpression); isSuper {
+				// super.method(args): push SuperAccessor, then args, then OpInvokeMethod
+				if !c.inClass {
+					return fmt.Errorf("'super' used outside of a class method")
+				}
+				c.emit(code.OpGetSuper)
+			} else {
+				// regular obj.method(args): push obj, then args
+				if err := c.Compile(fieldAccess.Left); err != nil {
+					return err
+				}
+			}
+			for _, a := range node.Arguments {
+				if err := c.Compile(a); err != nil {
+					return err
+				}
+			}
+			nameIdx := c.addConstant(&object.String{Value: fieldAccess.Field.Value})
+			c.emit(code.OpInvokeMethod, nameIdx, len(node.Arguments))
+			return nil
+		}
+
+		// Regular function call
 		if err := c.Compile(node.Function); err != nil {
 			return err
 		}
@@ -587,6 +655,77 @@ func (c *Compiler) Compile(node ast.Node) error {
 		c.emit(code.OpIndex)
 	}
 
+	return nil
+}
+
+// compileClass emits bytecode for a class definition.
+//
+//	OpNewClass name_idx
+//	[OpLoadSuperClass; OpSetSuper]
+//	for each method: OpClosure ...; OpDefineMethod name_idx
+//	OpSetGlobal/Local
+func (c *Compiler) compileClass(node *ast.ClassStatement) error {
+	sym := c.symbolTable.Define(node.Name.Value, false)
+
+	nameIdx := c.addConstant(&object.String{Value: node.Name.Value})
+	c.emit(code.OpNewClass, nameIdx)
+
+	if node.SuperClass != nil {
+		superSym, ok := c.symbolTable.Resolve(node.SuperClass.Value)
+		if !ok {
+			return fmt.Errorf("undefined class '%s'", node.SuperClass.Value)
+		}
+		c.loadSymbol(superSym)
+		c.emit(code.OpSetSuper)
+	}
+
+	prevInClass := c.inClass
+	c.inClass = true
+	for _, method := range node.Methods {
+		if err := c.compileMethod(method); err != nil {
+			return err
+		}
+		methodNameIdx := c.addConstant(&object.String{Value: method.Name})
+		c.emit(code.OpDefineMethod, methodNameIdx)
+	}
+	c.inClass = prevInClass
+
+	c.setSymbol(sym)
+	return nil
+}
+
+// compileMethod compiles a single class method into a closure on the stack.
+// It is the caller's responsibility to emit OpDefineMethod afterwards.
+func (c *Compiler) compileMethod(method *ast.FunctionLiteral) error {
+	c.enterScope()
+	for _, p := range method.Parameters {
+		c.symbolTable.Define(p.Value, false)
+	}
+	if err := c.Compile(method.Body); err != nil {
+		return err
+	}
+	if !c.lastInstructionIs(code.OpReturn) {
+		if c.lastInstructionIs(code.OpPop) {
+			c.replaceLastPopWithReturn()
+		} else {
+			c.emit(code.OpReturnNil)
+		}
+	}
+	freeSymbols := c.symbolTable.FreeSymbols
+	numLocals := c.symbolTable.NumDefinitions
+	instructions := c.leaveScope()
+
+	for _, s := range freeSymbols {
+		c.loadSymbol(s)
+	}
+	fn := &object.CompiledFunction{
+		Instructions: instructions,
+		NumLocals:    numLocals,
+		NumParams:    len(method.Parameters),
+		Name:         method.Name,
+	}
+	fnIdx := c.addConstant(fn)
+	c.emit(code.OpClosure, fnIdx, len(freeSymbols))
 	return nil
 }
 
