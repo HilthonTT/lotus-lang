@@ -81,6 +81,8 @@ const (
 	EXTENDS TokenType = "EXTENDS"
 	SELF    TokenType = "SELF"
 	SUPER   TokenType = "SUPER"
+
+	QUESTION TokenType = "?"
 )
 
 var keywords = map[string]TokenType{

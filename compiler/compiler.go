@@ -536,6 +536,33 @@ func (c *Compiler) Compile(node ast.Node) error {
 		afterAlternative := len(c.currentInstructions())
 		c.replaceOperand(endJump, afterAlternative)
 
+	case *ast.TernaryExpression:
+		if err := c.Compile(node.Condition); err != nil {
+			return err
+		}
+		falseJump := c.emit(code.OpJumpFalse, 9999)
+
+		if err := c.Compile(node.Consequence); err != nil {
+			return err
+		}
+		if c.lastInstructionIs(code.OpPop) {
+			c.removeLastPop()
+		}
+
+		endJump := c.emit(code.OpJump, 9999)
+		afterConsequence := len(c.currentInstructions())
+		c.replaceOperand(falseJump, afterConsequence)
+
+		if err := c.Compile(node.Alternative); err != nil {
+			return err
+		}
+		if c.lastInstructionIs(code.OpPop) {
+			c.removeLastPop()
+		}
+
+		afterAlternative := len(c.currentInstructions())
+		c.replaceOperand(endJump, afterAlternative)
+
 	case *ast.FunctionLiteral:
 		// For named functions, define the symbol BEFORE entering scope
 		// so recursive references resolve correctly

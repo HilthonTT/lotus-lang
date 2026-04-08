@@ -19,6 +19,7 @@ type (
 const (
 	_ int = iota
 	LOWEST
+	TERNARY     // ?:
 	OR_PREC     // ||
 	AND_PREC    // &&
 	EQUALS      // == !=
@@ -48,6 +49,7 @@ var precedences = map[token.TokenType]int{
 	token.LPAREN:   CALL,
 	token.LBRACKET: INDEX,
 	token.DOT:      INDEX, // field access binds as tightly as indexing
+	token.QUESTION: TERNARY,
 }
 
 type Parser struct {
@@ -121,6 +123,7 @@ func New(l *lexer.Lexer) *Parser {
 		token.LPAREN:   p.parseCallExpression,
 		token.LBRACKET: p.parseIndexExpression,
 		token.DOT:      p.parseDotExpression,
+		token.QUESTION: p.parseTernaryExpression,
 	}
 
 	p.postfixParseFns = map[token.TokenType]postfixParseFunc{
@@ -401,6 +404,25 @@ func (p *Parser) parseDotExpression(left ast.Expression) ast.Expression {
 		Left:  left,
 		Field: field,
 	}
+}
+
+func (p *Parser) parseTernaryExpression(condition ast.Expression) ast.Expression {
+	exp := &ast.TernaryExpression{
+		Token:     p.curToken, // the '?' token
+		Condition: condition,
+	}
+
+	p.nextToken() // move past '?'
+	exp.Consequence = p.parseExpression(LOWEST)
+
+	if !p.expectPeek(token.COLON) {
+		return nil
+	}
+
+	p.nextToken() // move past ':'
+	exp.Alternative = p.parseExpression(LOWEST)
+
+	return exp
 }
 
 func (p *Parser) parseBlockStatement() *ast.BlockStatement {
