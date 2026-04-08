@@ -56,6 +56,10 @@ func New() *Compiler {
 		symbolTable.DefineBuiltin(i, v.Name)
 	}
 
+	for name := range BuiltinPackages {
+		symbolTable.Define(name, false)
+	}
+
 	return &Compiler{
 		constants:   []object.Object{},
 		symbolTable: symbolTable,
@@ -70,6 +74,11 @@ func (c *Compiler) Bytecode() *Bytecode {
 		Instructions: c.currentInstructions(),
 		Constants:    c.constants,
 	}
+}
+
+// PublicResolve exposes symbol resolution for VM package seeding.
+func (c *Compiler) PublicResolve(name string) (Symbol, bool) {
+	return c.symbolTable.Resolve(name)
 }
 
 // currentInstructions returns the instructions for the current scopes index

@@ -1,0 +1,21 @@
+let max = 10 > 5 ? 10 : 5
+print(str(max))  // 10
+
+// Console package
+let name = Console.prompt("Enter your name: ")
+print("Hello, " + name + "!")
+
+Console.clear()
+Console.print("Cleared!")
+Console.printErr("Something went wrong")
+
+// Math package
+print(str(Math.sqrt(16.0)))   // 4.0
+print(str(Math.pow(2.0, 8.0))) // 256.0
+print(str(Math.abs(-42)))      // 42
+print(str(Math.pi()))          // 3.141592653589793
+
+// OS package
+let content = OS.readFile("hello.txt")
+OS.writeFile("out.txt", "Hello from Lotus!")
+let args = OS.args()

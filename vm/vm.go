@@ -46,11 +46,24 @@ func New(bytecode *compiler.Bytecode) *VM {
 	frames := make([]*Frame, MaxFrames)
 	frames[0] = mainFrame
 
+	globals := make([]object.Object, GlobalsSize)
+
+	// Seed package globals. The symbol table assigns indices in definition
+	// order, and packages are defined after builtins — so we resolve each
+	// name against a fresh compiler to find its index.
+	seedCompiler := compiler.New()
+	for name, pkg := range compiler.BuiltinPackages {
+		sym, ok := seedCompiler.PublicResolve(name)
+		if ok {
+			globals[sym.Index] = pkg
+		}
+	}
+
 	return &VM{
 		constants:   bytecode.Constants,
 		stack:       make([]object.Object, StackSize),
 		sp:          0,
-		globals:     make([]object.Object, GlobalsSize),
+		globals:     globals,
 		frames:      frames,
 		framesIndex: 1,
 	}
@@ -449,6 +462,19 @@ func (vm *VM) executeGetField(obj object.Object, name string) error {
 			return vm.push(method)
 		}
 		return vm.push(Nil)
+
+	case *object.Package:
+		fn, ok := o.Functions[name]
+		if !ok {
+			return fmt.Errorf("package '%s' has no member '%s'", o.Name, name)
+		}
+
+		// Wrap as a Builtin so OpCall handles it normally
+		return vm.push(&object.Builtin{
+			Name: o.Name + "." + name,
+			Fn:   object.BuiltinFunction(fn),
+		})
+
 	default:
 		return fmt.Errorf("field access on non-instance (%s)", obj.Type())
 	}
@@ -485,6 +511,23 @@ func (vm *VM) executeInvokeMethod(methodName string, numArgs int) error {
 		// Replace SuperAccessor with the real self
 		vm.stack[vm.sp-numArgs-1] = r.Self
 		return vm.callMethod(method, numArgs)
+
+	case *object.Package:
+		fn, ok := r.Functions[methodName]
+		if !ok {
+			return fmt.Errorf("package '%s' has no member '%s'", r.Name, methodName)
+		}
+		// Collect args (skip the package receiver slot), call, clean up
+		args := make([]object.Object, numArgs)
+		for i := 0; i < numArgs; i++ {
+			args[i] = vm.stack[vm.sp-numArgs+i]
+		}
+		vm.sp -= numArgs + 1 // pop args + package receiver
+		result := fn(args...)
+		if result == nil {
+			result = Nil
+		}
+		return vm.push(result)
 
 	default:
 		return fmt.Errorf("method call on non-instance (%s)", receiver.Type())

@@ -16,6 +16,7 @@ const (
 	CLASS_OBJ    ObjectType = "CLASS"
 	INSTANCE_OBJ ObjectType = "INSTANCE"
 	SUPER_OBJ    ObjectType = "SUPER"
+	PACKAGE_OBJ  ObjectType = "PACKAGE"
 )
 
 // Object is the interface that all of our various object-types must implemented.
