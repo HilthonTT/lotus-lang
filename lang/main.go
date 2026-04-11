@@ -25,6 +25,8 @@ func main() {
 	annotated := flag.Bool("annotated", false, "Use annotated disassembly output (requires --dis)")
 	help := flag.Bool("help", false, "Show this help message")
 	ver := flag.Bool("version", false, "Print version information")
+	playground := flag.Bool("playground", false, "Start the web playground")
+	playgroundAddr := flag.String("playground-addr", ":3000", "Playground server address")
 
 	flag.Usage = printHelp
 	flag.Parse()
@@ -46,6 +48,12 @@ func main() {
 			os.Exit(1)
 		}
 		disassembleFile(flag.Args()[0], *annotated)
+	case *playground:
+		if err := validateEngine(*engine); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		startPlayground(*playgroundAddr, *engine)
 	default:
 		if err := validateEngine(*engine); err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -230,54 +238,4 @@ func printHelp() {
 	fmt.Println("  lotus --console")
 	fmt.Println("  lotus --console --engine eval")
 	fmt.Println("  lotus --version")
-}
-func makeModuleLoader() vm.ModuleLoader {
-	cache := map[string]*object.Module{}
-
-	var load func(importerPath, path string) (*object.Module, error)
-	load = func(importerPath, path string) (*object.Module, error) {
-		// Resolve path relative to the importing file's directory
-		if !filepath.IsAbs(path) {
-			base := filepath.Dir(importerPath)
-			path = filepath.Join(base, path)
-		}
-		// Normalize so cache keys are consistent
-		path = filepath.Clean(path)
-
-		if mod, ok := cache[path]; ok {
-			return mod, nil
-		}
-
-		program := mustParse(path)
-
-		comp := compiler.New()
-		if err := comp.Compile(program); err != nil {
-			return nil, fmt.Errorf("compile error in %q: %w", path, err)
-		}
-
-		bytecode := comp.Bytecode()
-		// Pass path as the importer for any nested imports inside this module
-		machine := vm.NewWithLoader(bytecode, func(childPath string) (*object.Module, error) {
-			return load(path, childPath)
-		})
-		if err := machine.Run(); err != nil {
-			return nil, fmt.Errorf("runtime error in %q: %w", path, err)
-		}
-
-		mod := &object.Module{
-			Path:    path,
-			Exports: make(map[string]object.Object),
-		}
-		for name, globalIdx := range bytecode.ExportedSymbols {
-			mod.Exports[name] = machine.GetGlobal(globalIdx)
-		}
-
-		cache[path] = mod
-		return mod, nil
-	}
-
-	// The top-level loader uses the entry file's path as the importer
-	return func(path string) (*object.Module, error) {
-		return load(path, path)
-	}
 }

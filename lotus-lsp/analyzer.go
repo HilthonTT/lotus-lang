@@ -15,8 +15,11 @@ const (
 	kindField    = 5
 )
 
-func intPtr(i int) *int       { return &i }
-func strPtr(s string) *string { return &s }
+//go:fix inline
+func intPtr(i int) *int { return new(i) }
+
+//go:fix inline
+func strPtr(s string) *string { return new(s) }
 
 type Analyzer struct {
 	keywords []string

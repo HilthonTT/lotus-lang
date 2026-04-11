@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lotus Playground</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Syne:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./style.css" />
+
+    <body>
+      <header>
+        <div class="logo">
+          <span class="logo-icon">🪷</span>
+          Lotus
+        </div>
+        <div class="divider"></div>
+        <span class="examples-label">Examples</span>
+        <div class="examples">
+          <button class="example-btn" data-example="hello">Hello World</button>
+          <button class="example-btn" data-example="fibonacci">
+            Fibonacci
+          </button>
+          <button class="example-btn" data-example="closures">Closures</button>
+          <button class="example-btn" data-example="classes">Classes</button>
+          <button class="example-btn" data-example="sort">Quicksort</button>
+          <button class="example-btn" data-example="map">Maps</button>
+        </div>
+        <button class="run-btn" id="runBtn">
+          <svg width="13" height="13" viewBox="0 0 12 12" fill="currentColor">
+            <polygon points="2,1 11,6 2,11" />
+          </svg>
+          Run
+        </button>
+      </header>
+      <div class="workspace">
+        <div class="editor-pane">
+          <div class="pane-header">
+            <span class="dot"></span>
+            <span class="pane-label">Editor</span>
+            <span class="divider"></span>
+            <span class="file-name">main.lotus</span>
+          </div>
+          <div class="editor-wrap">
+            <div class="line-numbers" id="lineNumbers">1</div>
+            <div class="editor-scroll" id="editorScroll">
+              <div class="editor-inner" id="editorInner">
+                <div
+                  class="highlight-layer"
+                  id="highlightLayer"
+                  aria-hidden="true"
+                ></div>
+                <textarea
+                  class="code-input"
+                  id="codeInput"
+                  spellcheck="false"
+                  autocomplete="off"
+                  autocorrect="off"
+                  autocapitalize="off"
+                  placeholder="// Write Lotus code here..."
+                ></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="output-pane">
+          <div class="output-header">
+            <div style="display: flex; align-items: center; gap: 8px">
+              <span class="dot" id="statusDot"></span>
+              <span class="pane-label">Output</span>
+            </div>
+            <div class="output-actions">
+              <button class="icon-btn" id="clearBtn" title="Clear output">
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 16 16"
+                  fill="currentColor"
+                >
+                  <path
+                    d="M2 4h12v1.5H2zM5 4V2.5a.5.5 0 01.5-.5h5a.5.5 0 01.5.5V4M6.5 7v5M9.5 7v5M3 5.5l1 9a.5.5 0 00.5.5h7a.5.5 0 00.5-.5l1-9"
+                  />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="output-body" id="outputBody">
+            <div class="output-idle" id="outputIdle">
+              <span class="big-icon">🪷</span>
+              <p>Press Run to execute your code</p>
+            </div>
+          </div>
+          <div class="statusbar">
+            <div class="status-left">
+              <span class="status-dot" id="statusIndicator"></span>
+              <span id="statusText">ready</span>
+            </div>
+            <div class="status-right">
+              <span id="lineCol">Ln 1, Col 1</span>
+              <span id="execTime"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <script src="./playground.js"></script>
+    </body>
+  </head>
+</html>
