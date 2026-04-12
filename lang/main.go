@@ -86,7 +86,7 @@ func runFile(filePath, engine string) {
 		result = evaluateAst(program)
 	}
 
-	if result != nil {
+	if result != nil && result.Type() != object.NIL_OBJ {
 		fmt.Println(result.Inspect())
 	}
 }

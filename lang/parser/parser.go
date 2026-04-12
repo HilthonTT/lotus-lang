@@ -3,6 +3,7 @@ package parser
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/hilthontt/lotus/ast"
 	"github.com/hilthontt/lotus/lexer"
@@ -19,37 +20,49 @@ type (
 const (
 	_ int = iota
 	LOWEST
-	TERNARY     // ?:
-	OR_PREC     // ||
-	AND_PREC    // &&
-	EQUALS      // == !=
-	LESSGREATER // < > <= >=
-	SUM         // + -
-	PRODUCT     // * / %
-	PREFIX      // -x !x
-	CALL        // fn(x)
-	INDEX       // array[i]
+	NULLCOALESCE // ??
+	TERNARY      // ?:
+	OR_PREC      // ||
+	AND_PREC     // &&
+	BITWISE_OR   // |
+	BITWISE_XOR  // ^
+	BITWISE_AND  // &
+	EQUALS       // == !=
+	LESSGREATER  // < > <= >=
+	SHIFT        // << >>
+	SUM          // + -
+	PRODUCT      // * / %
+	PREFIX       // -x !x ~x
+	CALL         // fn(x)
+	INDEX        // arr[i] obj.field
 )
 
 // each token precedence
 var precedences = map[token.TokenType]int{
-	token.OR:       OR_PREC,
-	token.AND:      AND_PREC,
-	token.EQ:       EQUALS,
-	token.NOTEQ:    EQUALS,
-	token.LT:       LESSGREATER,
-	token.GT:       LESSGREATER,
-	token.LTEQ:     LESSGREATER,
-	token.GTEQ:     LESSGREATER,
-	token.PLUS:     SUM,
-	token.MINUS:    SUM,
-	token.ASTERISK: PRODUCT,
-	token.SLASH:    PRODUCT,
-	token.MODULO:   PRODUCT,
-	token.LPAREN:   CALL,
-	token.LBRACKET: INDEX,
-	token.DOT:      INDEX, // field access binds as tightly as indexing
-	token.QUESTION: TERNARY,
+	token.NULLCOALESCE: NULLCOALESCE,
+	token.OR:           OR_PREC,
+	token.AND:          AND_PREC,
+	token.BITOR:        BITWISE_OR,
+	token.BITXOR:       BITWISE_XOR,
+	token.BITAND:       BITWISE_AND,
+	token.EQ:           EQUALS,
+	token.NOTEQ:        EQUALS,
+	token.LT:           LESSGREATER,
+	token.GT:           LESSGREATER,
+	token.LTEQ:         LESSGREATER,
+	token.GTEQ:         LESSGREATER,
+	token.LSHIFT:       SHIFT,
+	token.RSHIFT:       SHIFT,
+	token.PLUS:         SUM,
+	token.MINUS:        SUM,
+	token.ASTERISK:     PRODUCT,
+	token.SLASH:        PRODUCT,
+	token.MODULO:       PRODUCT,
+	token.LPAREN:       CALL,
+	token.LBRACKET:     INDEX,
+	token.DOT:          INDEX, // field access binds as tightly as indexing
+	token.OPTDOT:       INDEX,
+	token.QUESTION:     TERNARY,
 }
 
 type Parser struct {
@@ -104,26 +117,35 @@ func New(l *lexer.Lexer) *Parser {
 		token.FN:       p.parseFunctionLiteral,
 		token.SELF:     p.parseSelfExpression,
 		token.SUPER:    p.parseSuperExpression,
+		token.MATCH:    p.parseMatchExpression,
+		token.TILDE:    p.parsePrefixExpression,
 	}
 
 	p.infixParseFns = map[token.TokenType]infixParseFn{
-		token.PLUS:     p.parseInfixExpression,
-		token.MINUS:    p.parseInfixExpression,
-		token.ASTERISK: p.parseInfixExpression,
-		token.SLASH:    p.parseInfixExpression,
-		token.MODULO:   p.parseInfixExpression,
-		token.EQ:       p.parseInfixExpression,
-		token.NOTEQ:    p.parseInfixExpression,
-		token.LT:       p.parseInfixExpression,
-		token.GT:       p.parseInfixExpression,
-		token.LTEQ:     p.parseInfixExpression,
-		token.GTEQ:     p.parseInfixExpression,
-		token.AND:      p.parseInfixExpression,
-		token.OR:       p.parseInfixExpression,
-		token.LPAREN:   p.parseCallExpression,
-		token.LBRACKET: p.parseIndexExpression,
-		token.DOT:      p.parseDotExpression,
-		token.QUESTION: p.parseTernaryExpression,
+		token.PLUS:         p.parseInfixExpression,
+		token.MINUS:        p.parseInfixExpression,
+		token.ASTERISK:     p.parseInfixExpression,
+		token.SLASH:        p.parseInfixExpression,
+		token.MODULO:       p.parseInfixExpression,
+		token.EQ:           p.parseInfixExpression,
+		token.NOTEQ:        p.parseInfixExpression,
+		token.LT:           p.parseInfixExpression,
+		token.GT:           p.parseInfixExpression,
+		token.LTEQ:         p.parseInfixExpression,
+		token.GTEQ:         p.parseInfixExpression,
+		token.AND:          p.parseInfixExpression,
+		token.OR:           p.parseInfixExpression,
+		token.LPAREN:       p.parseCallExpression,
+		token.LBRACKET:     p.parseIndexExpression,
+		token.DOT:          p.parseDotExpression,
+		token.QUESTION:     p.parseTernaryExpression,
+		token.NULLCOALESCE: p.parseInfixExpression,
+		token.BITOR:        p.parseInfixExpression,
+		token.BITXOR:       p.parseInfixExpression,
+		token.BITAND:       p.parseInfixExpression,
+		token.LSHIFT:       p.parseInfixExpression,
+		token.RSHIFT:       p.parseInfixExpression,
+		token.OPTDOT:       p.parseOptionalDotExpression,
 	}
 
 	p.postfixParseFns = map[token.TokenType]postfixParseFunc{
@@ -221,8 +243,93 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseExportStatement()
 	case token.IMPORT:
 		return p.parseImportStatement()
+	case token.ENUM:
+		return p.parseEnumStatement()
 	default:
 		return p.parseExpressionOrAssignStatement()
+	}
+}
+
+// parseMatchExpression: match x { 1 -> "one"  _ -> "other" }
+func (p *Parser) parseMatchExpression() ast.Expression {
+	expr := &ast.MatchExpression{Token: p.curToken}
+	p.nextToken()
+	expr.Subject = p.parseExpression(LOWEST)
+	if !p.expectPeek(token.LBRACE) {
+		return nil
+	}
+	p.nextToken() // move past {
+	for !p.curTokenIs(token.RBRACE) && !p.curTokenIs(token.EOF) {
+		arm := &ast.MatchArm{}
+		// Wildcard
+		if p.curTokenIs(token.IDENT) && p.curToken.Literal == "_" {
+			arm.IsWild = true
+		} else {
+			arm.Pattern = p.parseExpression(LOWEST)
+		}
+		if !p.expectPeek(token.ARROW) {
+			return nil
+		}
+		p.nextToken()
+		arm.Body = p.parseExpression(LOWEST)
+		expr.Arms = append(expr.Arms, arm)
+		if p.peekTokenIs(token.COMMA) {
+			p.nextToken()
+		}
+		p.nextToken()
+	}
+	return expr
+}
+
+// parseEnumStatement: enum Color { Red, Green, Blue(value) }
+func (p *Parser) parseEnumStatement() *ast.EnumStatement {
+	stmt := &ast.EnumStatement{Token: p.curToken}
+	if !p.expectPeek(token.IDENT) {
+		return nil
+	}
+	stmt.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+	if !p.expectPeek(token.LBRACE) {
+		return nil
+	}
+	p.nextToken()
+	for !p.curTokenIs(token.RBRACE) && !p.curTokenIs(token.EOF) {
+		if !p.curTokenIs(token.IDENT) {
+			p.nextToken()
+			continue
+		}
+		variant := &ast.EnumVariantDef{Name: p.curToken.Literal}
+		if p.peekTokenIs(token.LPAREN) {
+			p.nextToken() // consume (
+			p.nextToken() // first field
+			for !p.curTokenIs(token.RPAREN) && !p.curTokenIs(token.EOF) {
+				if p.curTokenIs(token.IDENT) {
+					variant.Fields = append(variant.Fields, p.curToken.Literal)
+				}
+				if p.peekTokenIs(token.COMMA) {
+					p.nextToken()
+				}
+				p.nextToken()
+			}
+		}
+		stmt.Variants = append(stmt.Variants, variant)
+		if p.peekTokenIs(token.COMMA) {
+			p.nextToken()
+		}
+		p.nextToken()
+	}
+	return stmt
+}
+
+// parseOptionalDotExpression: obj?.field
+func (p *Parser) parseOptionalDotExpression(left ast.Expression) ast.Expression {
+	tok := p.curToken
+	if !p.expectPeek(token.IDENT) {
+		return nil
+	}
+	return &ast.OptionalFieldAccess{
+		Token: tok,
+		Left:  left,
+		Field: &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal},
 	}
 }
 
@@ -331,40 +438,59 @@ func (p *Parser) parseClassStatement() *ast.ClassStatement {
 	return stmt
 }
 
-func (p *Parser) parseLetStatement() *ast.LetStatement {
-	stmt := &ast.LetStatement{Token: p.curToken}
-	stmt.Mutable = p.curToken.Type == token.MUT
-
-	// Check if the next token is an identifier
+func (p *Parser) parseLetStatement() ast.Statement {
+	tok := p.curToken
+	mutable := tok.Type == token.MUT
 	if !p.expectPeek(token.IDENT) {
 		return nil
 	}
+	firstName := &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
 
-	stmt.Name = &ast.Identifier{
-		Token: p.curToken,
-		Value: p.curToken.Literal,
+	// Multi-assignment: let a, b = ...
+	if p.peekTokenIs(token.COMMA) {
+		stmt := &ast.MultiLetStatement{Token: tok, Mutable: mutable}
+		stmt.Names = append(stmt.Names, firstName)
+		for p.peekTokenIs(token.COMMA) {
+			p.nextToken()
+			if !p.expectPeek(token.IDENT) {
+				return nil
+			}
+			stmt.Names = append(stmt.Names, &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal})
+		}
+		if !p.expectPeek(token.ASSIGN) {
+			return nil
+		}
+		p.nextToken()
+		for {
+			stmt.Values = append(stmt.Values, p.parseExpression(LOWEST))
+			if !p.peekTokenIs(token.COMMA) {
+				break
+			}
+			p.nextToken()
+			p.nextToken()
+		}
+		if p.peekTokenIs(token.SEMICOLON) {
+			p.nextToken()
+		}
+		return stmt
 	}
 
-	// Optional type annotation: let x: int = ...
+	// ... rest of existing parseLetStatement (single assignment)
+	single := &ast.LetStatement{Token: tok, Mutable: mutable, Name: firstName}
 	if p.peekTokenIs(token.COLON) {
-		p.nextToken() // consume ':'
-		p.nextToken() // move to type name
-		stmt.TypeAnnot = &ast.TypeAnnotation{Name: p.curToken.Literal}
+		p.nextToken()
+		p.nextToken()
+		single.TypeAnnot = &ast.TypeAnnotation{Name: p.curToken.Literal}
 	}
-
-	// Check if the next token is an assignement: '='
 	if !p.expectPeek(token.ASSIGN) {
 		return nil
 	}
-
 	p.nextToken()
-	stmt.Value = p.parseExpression(LOWEST)
-
-	// Optional semicolon
+	single.Value = p.parseExpression(LOWEST)
 	if p.peekTokenIs(token.SEMICOLON) {
 		p.nextToken()
 	}
-	return stmt
+	return single
 }
 
 func (p *Parser) parseReturnStatement() *ast.ReturnStatement {
@@ -513,6 +639,35 @@ func (p *Parser) parseBlockStatement() *ast.BlockStatement {
 func (p *Parser) parseExpressionOrAssignStatement() ast.Statement {
 	expr := p.parseExpression(LOWEST)
 
+	// Multi-assign: a, b = x, y  (no let/mut keyword)
+	if p.peekTokenIs(token.COMMA) {
+		if _, ok := expr.(*ast.Identifier); ok {
+			stmt := &ast.MultiAssignStatement{Token: p.curToken}
+			stmt.Names = append(stmt.Names, expr)
+			for p.peekTokenIs(token.COMMA) {
+				p.nextToken() // consume ','
+				p.nextToken() // next name
+				stmt.Names = append(stmt.Names, p.parseExpression(LOWEST))
+			}
+			if !p.expectPeek(token.ASSIGN) {
+				return nil
+			}
+			p.nextToken()
+			for {
+				stmt.Values = append(stmt.Values, p.parseExpression(LOWEST))
+				if !p.peekTokenIs(token.COMMA) {
+					break
+				}
+				p.nextToken()
+				p.nextToken()
+			}
+			if p.peekTokenIs(token.SEMICOLON) {
+				p.nextToken()
+			}
+			return stmt
+		}
+	}
+
 	if p.peekTokenIs(token.ASSIGN) {
 		switch target := expr.(type) {
 		case *ast.Identifier:
@@ -586,7 +741,66 @@ func (p *Parser) parseFloatLiteral() ast.Expression {
 }
 
 func (p *Parser) parseStringLiteral() ast.Expression {
-	return &ast.StringLiteral{Token: p.curToken, Value: p.curToken.Literal}
+	tok := p.curToken
+	raw := tok.Literal
+	if !strings.Contains(raw, "${") {
+		return &ast.StringLiteral{Token: tok, Value: raw}
+	}
+	return p.buildInterpolation(tok, raw)
+}
+
+func (p *Parser) buildInterpolation(tok token.Token, raw string) ast.Expression {
+	type part struct {
+		text   string
+		isExpr bool
+	}
+	var parts []part
+	s := raw
+	for len(s) > 0 {
+		idx := strings.Index(s, "${")
+		if idx == -1 {
+			if len(s) > 0 {
+				parts = append(parts, part{s, false})
+			}
+			break
+		}
+		if idx > 0 {
+			parts = append(parts, part{s[:idx], false})
+		}
+		s = s[idx+2:]
+		depth, end := 1, 0
+		for end < len(s) && depth > 0 {
+			if s[end] == '{' {
+				depth++
+			}
+			if s[end] == '}' {
+				depth--
+			}
+			end++
+		}
+		parts = append(parts, part{s[:end-1], true})
+		s = s[end:]
+	}
+	var result ast.Expression
+	for _, pt := range parts {
+		var expr ast.Expression
+		if pt.isExpr {
+			l := lexer.New(pt.text)
+			sub := New(l)
+			expr = sub.parseExpression(LOWEST)
+		} else {
+			expr = &ast.StringLiteral{Token: tok, Value: pt.text}
+		}
+		if result == nil {
+			result = expr
+		} else {
+			result = &ast.InfixExpression{Token: tok, Left: result, Operator: "+", Right: expr}
+		}
+	}
+	if result == nil {
+		return &ast.StringLiteral{Token: tok, Value: ""}
+	}
+	return result
 }
 
 func (p *Parser) parseBooleanLiteral() ast.Expression {

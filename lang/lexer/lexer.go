@@ -8,25 +8,14 @@ import (
 	"github.com/hilthontt/lotus/token"
 )
 
-// Lexer holds our object-state
 type Lexer struct {
-	// The currrent character position
-	position int
-
-	// The next character position
+	position     int
 	readPosition int
-
-	// The current character
-	ch rune
-
-	// A rune slice of our input string
-	characters []rune
-
-	// Previous token.
-	prevToken token.Token
-
-	line int
-	col  int
+	ch           rune
+	characters   []rune
+	prevToken    token.Token
+	line         int
+	col          int
 }
 
 func New(input string) *Lexer {
@@ -35,9 +24,7 @@ func New(input string) *Lexer {
 		line:       1,
 		col:        0,
 	}
-
 	l.readChar()
-
 	return l
 }
 
@@ -51,7 +38,6 @@ func Tokenize(input string) []token.Token {
 			break
 		}
 	}
-
 	return tokens
 }
 
@@ -89,6 +75,7 @@ func (l *Lexer) NextToken() token.Token {
 			tok.Type = token.ASSIGN
 			tok.Literal = "="
 		}
+
 	case '+':
 		if l.peekChar() == '+' {
 			ch := l.ch
@@ -99,6 +86,7 @@ func (l *Lexer) NextToken() token.Token {
 			tok.Type = token.PLUS
 			tok.Literal = "+"
 		}
+
 	case '-':
 		if l.peekChar() == '-' {
 			ch := l.ch
@@ -113,6 +101,7 @@ func (l *Lexer) NextToken() token.Token {
 			tok.Type = token.MINUS
 			tok.Literal = "-"
 		}
+
 	case '!':
 		if l.peekChar() == '=' {
 			tok.Type = token.NOTEQ
@@ -122,94 +111,137 @@ func (l *Lexer) NextToken() token.Token {
 			tok.Type = token.BANG
 			tok.Literal = "!"
 		}
+
 	case '*':
 		tok.Type = token.ASTERISK
 		tok.Literal = "*"
+
 	case '/':
 		tok.Type = token.SLASH
 		tok.Literal = "/"
+
 	case '%':
 		tok.Type = token.MODULO
 		tok.Literal = "%"
+
 	case '<':
-		if l.peekChar() == '=' {
+		if l.peekChar() == '<' {
+			l.readChar()
+			tok.Type = token.LSHIFT
+			tok.Literal = "<<"
+		} else if l.peekChar() == '=' {
+			l.readChar()
 			tok.Type = token.LTEQ
 			tok.Literal = "<="
-			l.readChar()
 		} else {
 			tok.Type = token.LT
 			tok.Literal = "<"
 		}
+
 	case '>':
-		{
-			if l.peekChar() == '=' {
-				tok.Type = token.GTEQ
-				tok.Literal = ">="
-				l.readChar()
-			} else {
-				tok.Type = token.GT
-				tok.Literal = ">"
-			}
+		if l.peekChar() == '>' {
+			l.readChar()
+			tok.Type = token.RSHIFT
+			tok.Literal = ">>"
+		} else if l.peekChar() == '=' {
+			l.readChar()
+			tok.Type = token.GTEQ
+			tok.Literal = ">="
+		} else {
+			tok.Type = token.GT
+			tok.Literal = ">"
 		}
+
 	case '&':
-		{
-			if l.peekChar() == '&' {
-				tok.Type = token.AND
-				tok.Literal = "&&"
-				l.readChar()
-			} else {
-				tok.Type = token.ILLEGAL
-				tok.Literal = "&"
-			}
+		if l.peekChar() == '&' {
+			l.readChar()
+			tok.Type = token.AND
+			tok.Literal = "&&"
+		} else {
+			tok.Type = token.BITAND
+			tok.Literal = "&"
 		}
+
 	case '|':
 		if l.peekChar() == '|' {
+			l.readChar()
 			tok.Type = token.OR
 			tok.Literal = "||"
-			l.readChar()
 		} else {
-			tok.Type = token.ILLEGAL
+			tok.Type = token.BITOR
 			tok.Literal = "|"
 		}
+
+	case '^':
+		tok.Type = token.BITXOR
+		tok.Literal = "^"
+
+	case '~':
+		tok.Type = token.TILDE
+		tok.Literal = "~"
+
+	case '?':
+		if l.peekChar() == '?' {
+			l.readChar()
+			tok.Type = token.NULLCOALESCE
+			tok.Literal = "??"
+		} else if l.peekChar() == '.' {
+			l.readChar()
+			tok.Type = token.OPTDOT
+			tok.Literal = "?."
+		} else {
+			tok.Type = token.QUESTION
+			tok.Literal = "?"
+		}
+
 	case ',':
 		tok.Type = token.COMMA
 		tok.Literal = ","
+
 	case ';':
 		tok.Type = token.SEMICOLON
 		tok.Literal = ";"
+
 	case ':':
 		tok.Type = token.COLON
 		tok.Literal = ":"
+
 	case '.':
 		tok.Type = token.DOT
 		tok.Literal = "."
+
 	case '(':
 		tok.Type = token.LPAREN
 		tok.Literal = "("
+
 	case ')':
 		tok.Type = token.RPAREN
 		tok.Literal = ")"
+
 	case '{':
 		tok.Type = token.LBRACE
 		tok.Literal = "{"
+
 	case '}':
 		tok.Type = token.RBRACE
 		tok.Literal = "}"
+
 	case '[':
 		tok.Type = token.LBRACKET
 		tok.Literal = "["
+
 	case ']':
 		tok.Type = token.RBRACKET
 		tok.Literal = "]"
+
 	case '"':
 		tok.Type = token.STRING
 		tok.Literal = l.readString()
-	case '?':
-		tok.Type = token.QUESTION
-		tok.Literal = "?"
+
 	case 0:
 		tok.Type = token.EOF
 		tok.Literal = ""
+
 	default:
 		if isDigit(l.ch) {
 			return l.readNumber()
@@ -226,7 +258,6 @@ func (l *Lexer) NextToken() token.Token {
 
 	l.readChar()
 	l.prevToken = tok
-
 	return tok
 }
 
@@ -249,7 +280,6 @@ func (l *Lexer) skipWhitespace() {
 			l.line++
 			l.col = 0
 		}
-
 		l.readChar()
 	}
 }
@@ -263,7 +293,7 @@ func (l *Lexer) readIdentifier() string {
 }
 
 func (l *Lexer) readString() string {
-	l.readChar() // Skip opening quote "
+	l.readChar() // skip opening "
 	var buf []byte
 
 	for l.ch != '"' && l.ch != 0 {
@@ -303,7 +333,7 @@ func (l *Lexer) readNumber() token.Token {
 	}
 	if l.ch == '.' && isDigit(l.peekChar()) {
 		isFloat = true
-		l.readChar() // consume '.'
+		l.readChar()
 		for isDigit(l.ch) {
 			l.readChar()
 		}
@@ -319,7 +349,7 @@ func (l *Lexer) readNumber() token.Token {
 }
 
 func isWhitespace(ch rune) bool {
-	return ch == rune(' ') || ch == rune('\t') || ch == rune('\n') || ch == rune('\r')
+	return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r'
 }
 
 func isLetter(ch rune) bool {

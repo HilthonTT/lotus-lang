@@ -81,7 +81,7 @@ func NewWithLoader(bytecode *compiler.Bytecode, loader ModuleLoader) *VM {
 		moduleCache: make(map[string]*object.Module),
 	}
 
-	for _, name := range []string{"Task"} {
+	for _, name := range []string{"Task", "Array", "String"} {
 		sym, ok := seedCompiler.PublicResolve(name)
 		if ok {
 			if pkg, ok := globals[sym.Index].(*object.Package); ok {
@@ -553,12 +553,51 @@ func (vm *VM) Run() error {
 				return err
 			}
 
+		case code.OpBitAnd, code.OpBitOr, code.OpBitXor, code.OpLShift, code.OpRShift:
+			if err := vm.executeBitwiseOperation(op); err != nil {
+				return err
+			}
+
+		case code.OpBitNot:
+			operand := vm.pop()
+			i, ok := operand.(*object.Integer)
+			if !ok {
+				return fmt.Errorf("~ requires integer, got %s", operand.Type())
+			}
+			if err := vm.push(&object.Integer{Value: ^i.Value}); err != nil {
+				return err
+			}
+
 		default:
 			return fmt.Errorf("unknown opcode: %d", op)
 		}
 	}
 
 	return nil
+}
+
+func (vm *VM) executeBitwiseOperation(op code.Opcode) error {
+	right := vm.pop()
+	left := vm.pop()
+	l, ok1 := left.(*object.Integer)
+	r, ok2 := right.(*object.Integer)
+	if !ok1 || !ok2 {
+		return fmt.Errorf("bitwise operators require integers, got %s and %s", left.Type(), right.Type())
+	}
+	var result int64
+	switch op {
+	case code.OpBitAnd:
+		result = l.Value & r.Value
+	case code.OpBitOr:
+		result = l.Value | r.Value
+	case code.OpBitXor:
+		result = l.Value ^ r.Value
+	case code.OpLShift:
+		result = l.Value << uint(r.Value)
+	case code.OpRShift:
+		result = l.Value >> uint(r.Value)
+	}
+	return vm.push(&object.Integer{Value: result})
 }
 
 // currentConstants returns the constants pool for the currently executing frame.
@@ -600,6 +639,34 @@ func (vm *VM) executeGetField(obj object.Object, name string) error {
 			return fmt.Errorf("module %q has no export '%s'", o.Path, name)
 		}
 		return vm.push(val)
+
+	case *object.EnumDef:
+		varDef, ok := o.Variants[name]
+		if !ok {
+			return fmt.Errorf("enum '%s' has no variant '%s'", o.Name, name)
+		}
+		if len(varDef.Fields) == 0 {
+			return vm.push(&object.EnumVariant{EnumName: o.Name, VariantName: name})
+		}
+		// Variant with fields — return a constructor builtin
+		enumName, variantName, fields := o.Name, name, varDef.Fields
+		return vm.push(&object.Builtin{
+			Name: o.Name + "." + name,
+			Fn: func(args ...object.Object) object.Object {
+				if len(args) != len(fields) {
+					return &object.Nil{}
+				}
+				data := make(map[string]object.Object)
+				for i, f := range fields {
+					data[f] = args[i]
+				}
+				return &object.EnumVariant{EnumName: enumName, VariantName: variantName, Data: data}
+			},
+		})
+
+	case *object.EnumVariant:
+		// Access data field on a data-carrying variant: shape.radius
+		return vm.push(o.GetField(name))
 
 	default:
 		return fmt.Errorf("field access on non-instance (%s)", obj.Type())
@@ -645,7 +712,7 @@ func (vm *VM) executeInvokeMethod(methodName string, numArgs int) error {
 		}
 		// Collect args (skip the package receiver slot), call, clean up
 		args := make([]object.Object, numArgs)
-		for i := 0; i < numArgs; i++ {
+		for i := range numArgs {
 			args[i] = vm.stack[vm.sp-numArgs+i]
 		}
 		vm.sp -= numArgs + 1 // pop args + package receiver
@@ -654,6 +721,34 @@ func (vm *VM) executeInvokeMethod(methodName string, numArgs int) error {
 			result = Nil
 		}
 		return vm.push(result)
+
+	case *object.EnumDef:
+		varDef, ok := r.Variants[methodName]
+		if !ok {
+			return fmt.Errorf("enum '%s' has no variant '%s'", r.Name, methodName)
+		}
+		args := make([]object.Object, numArgs)
+		for i := range numArgs {
+			args[i] = vm.stack[vm.sp-numArgs+i]
+		}
+		vm.sp -= numArgs + 1 // pop args + enum receiver
+
+		if len(varDef.Fields) == 0 {
+			return vm.push(&object.EnumVariant{EnumName: r.Name, VariantName: methodName})
+		}
+		if len(args) != len(varDef.Fields) {
+			return fmt.Errorf("enum variant '%s.%s' expects %d args, got %d",
+				r.Name, methodName, len(varDef.Fields), numArgs)
+		}
+		data := make(map[string]object.Object)
+		for i, f := range varDef.Fields {
+			data[f] = args[i]
+		}
+		return vm.push(&object.EnumVariant{
+			EnumName:    r.Name,
+			VariantName: methodName,
+			Data:        data,
+		})
 
 	default:
 		return fmt.Errorf("method call on non-instance (%s)", receiver.Type())
@@ -733,9 +828,13 @@ func (vm *VM) pop() object.Object {
 func (vm *VM) executeBinaryOperation(op code.Opcode) error {
 	right := vm.pop()
 	left := vm.pop()
-
 	leftType := left.Type()
 	rightType := right.Type()
+
+	// String + anything → auto-convert for interpolation
+	if op == code.OpAdd && (leftType == object.STRING_OBJ || rightType == object.STRING_OBJ) {
+		return vm.push(&object.String{Value: left.Inspect() + right.Inspect()})
+	}
 
 	switch {
 	case leftType == object.INTEGER_OBJ && rightType == object.INTEGER_OBJ:
@@ -831,6 +930,18 @@ func (vm *VM) executeComparison(op code.Opcode) error {
 	// String comparison
 	if left.Type() == object.STRING_OBJ && right.Type() == object.STRING_OBJ {
 		return vm.executeStringComparison(op, left, right)
+	}
+
+	if left.Type() == object.ENUM_VARIANT_OBJ && right.Type() == object.ENUM_VARIANT_OBJ {
+		l := left.(*object.EnumVariant)
+		r := right.(*object.EnumVariant)
+		eq := l.EnumName == r.EnumName && l.VariantName == r.VariantName
+		switch op {
+		case code.OpEqual:
+			return vm.push(nativeBoolToBooleanObj(eq))
+		case code.OpNotEqual:
+			return vm.push(nativeBoolToBooleanObj(!eq))
+		}
 	}
 
 	switch op {

@@ -141,6 +141,13 @@ const (
 
 	// OpDup duplicates the top of stack (used to access module fields multiple times).
 	OpDup
+
+	OpBitAnd
+	OpBitOr
+	OpBitXor
+	OpBitNot
+	OpLShift
+	OpRShift
 )
 
 type Definition struct {
@@ -195,6 +202,12 @@ var definitions = map[Opcode]*Definition{
 	OpGetSuper:     {"OpGetSuper", []int{}},
 	OpRunModule:    {"OpRunModule", []int{2}}, // Operand: const_idx of the path string (2 bytes).
 	OpDup:          {"OpDup", []int{}},
+	OpBitAnd:       {"OpBitAnd", []int{}},
+	OpBitOr:        {"OpBitOr", []int{}},
+	OpBitXor:       {"OpBitXor", []int{}},
+	OpBitNot:       {"OpBitNot", []int{}},
+	OpLShift:       {"OpLShift", []int{}},
+	OpRShift:       {"OpRShift", []int{}},
 }
 
 // Lookup finds the Definition for a given opcode byte.

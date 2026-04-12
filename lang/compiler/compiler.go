@@ -385,6 +385,8 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.emit(code.OpNegate)
 		case "!":
 			c.emit(code.OpNot)
+		case "~":
+			c.emit(code.OpBitNot)
 		default:
 			return fmt.Errorf("unknown prefix operator: %s", node.Operator)
 		}
@@ -485,6 +487,22 @@ func (c *Compiler) Compile(node ast.Node) error {
 			return nil
 		}
 
+		// Short-circuit ??
+		if node.Operator == "??" {
+			c.emit(code.OpDup)
+			c.emit(code.OpNil)
+			c.emit(code.OpEqual)
+			hasVal := c.emit(code.OpJumpFalse, 9999)
+			c.emit(code.OpPop)
+			if err := c.Compile(node.Right); err != nil {
+				return err
+			}
+			end := c.emit(code.OpJump, 9999)
+			c.replaceOperand(hasVal, len(c.currentInstructions()))
+			c.replaceOperand(end, len(c.currentInstructions()))
+			return nil
+		}
+
 		// Right, then emit the operator
 		if err := c.Compile(node.Right); err != nil {
 			return err
@@ -509,6 +527,16 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.emit(code.OpGreater)
 		case ">=":
 			c.emit(code.OpGreaterEq)
+		case "&":
+			c.emit(code.OpBitAnd)
+		case "|":
+			c.emit(code.OpBitOr)
+		case "^":
+			c.emit(code.OpBitXor)
+		case "<<":
+			c.emit(code.OpLShift)
+		case ">>":
+			c.emit(code.OpRShift)
 		default:
 			return fmt.Errorf("unknown operator: %s", node.Operator)
 		}
@@ -703,6 +731,98 @@ func (c *Compiler) Compile(node ast.Node) error {
 		if err := c.compileImport(node); err != nil {
 			return err
 		}
+	case *ast.OptionalFieldAccess:
+		if err := c.Compile(node.Left); err != nil {
+			return err
+		}
+		// Dup, check nil, if nil push nil else get field
+		c.emit(code.OpDup)
+		c.emit(code.OpNil)
+		c.emit(code.OpEqual)
+		isNilJump := c.emit(code.OpJumpFalse, 9999)
+		c.emit(code.OpPop)
+		c.emit(code.OpNil)
+		endJump := c.emit(code.OpJump, 9999)
+		notNilPos := len(c.currentInstructions())
+		c.replaceOperand(isNilJump, notNilPos)
+		nameIdx := c.addConstant(&object.String{Value: node.Field.Value})
+		c.emit(code.OpGetField, nameIdx)
+		endPos := len(c.currentInstructions())
+		c.replaceOperand(endJump, endPos)
+
+	case *ast.MatchExpression:
+		if err := c.Compile(node.Subject); err != nil {
+			return err
+		}
+		var endJumps []int
+		for _, arm := range node.Arms {
+			if arm.IsWild {
+				c.emit(code.OpPop)
+				if err := c.Compile(arm.Body); err != nil {
+					return err
+				}
+				if c.lastInstructionIs(code.OpPop) {
+					c.removeLastPop()
+				}
+			} else {
+				c.emit(code.OpDup)
+				if err := c.Compile(arm.Pattern); err != nil {
+					return err
+				}
+				c.emit(code.OpEqual)
+				nextArm := c.emit(code.OpJumpFalse, 9999)
+				c.emit(code.OpPop)
+				if err := c.Compile(arm.Body); err != nil {
+					return err
+				}
+				if c.lastInstructionIs(code.OpPop) {
+					c.removeLastPop()
+				}
+				endJumps = append(endJumps, c.emit(code.OpJump, 9999))
+				c.replaceOperand(nextArm, len(c.currentInstructions()))
+			}
+		}
+		end := len(c.currentInstructions())
+		for _, j := range endJumps {
+			c.replaceOperand(j, end)
+		}
+	case *ast.EnumStatement:
+		sym := c.symbolTable.Define(node.Name.Value, false)
+		variants := make(map[string]*object.EnumVariantDef)
+		for _, v := range node.Variants {
+			variants[v.Name] = &object.EnumVariantDef{Fields: v.Fields}
+		}
+		enumDef := &object.EnumDef{Name: node.Name.Value, Variants: variants}
+		c.emit(code.OpConstant, c.addConstant(enumDef))
+		c.setSymbol(sym)
+	case *ast.MultiLetStatement:
+		// Evaluate all values first (left to right), then store in reverse
+		for _, val := range node.Values {
+			if err := c.Compile(val); err != nil {
+				return err
+			}
+		}
+		for i := len(node.Names) - 1; i >= 0; i-- {
+			sym := c.symbolTable.Define(node.Names[i].Value, node.Mutable)
+			c.setSymbol(sym)
+		}
+	case *ast.MultiAssignStatement:
+		for _, val := range node.Values {
+			if err := c.Compile(val); err != nil {
+				return err
+			}
+		}
+		for i := len(node.Names) - 1; i >= 0; i-- {
+			name, ok := node.Names[i].(*ast.Identifier)
+			if !ok {
+				return fmt.Errorf("invalid assignment target")
+			}
+			sym, ok := c.symbolTable.Resolve(name.Value)
+			if !ok {
+				return fmt.Errorf("undefined variable: %s", name.Value)
+			}
+			c.setSymbol(sym)
+		}
 	}
 
 	return nil
@@ -893,12 +1013,10 @@ func (c *Compiler) emitLoop(loopStart int) {
 }
 
 func (c *Compiler) lastInstructionIs(op code.Opcode) bool {
-	ins := c.currentInstructions()
-	if len(ins) == 0 {
+	if len(c.currentInstructions()) == 0 {
 		return false
 	}
-
-	return ins[len(ins)-1] == byte(op)
+	return c.scopes[c.scopeIndex].lastInstruction.Opcode == op
 }
 
 func (c *Compiler) removeLastPop() {

@@ -47,6 +47,21 @@ const (
 	AND TokenType = "&&"
 	OR  TokenType = "||"
 
+	// Bitwise operators
+	BITAND TokenType = "&"
+	BITOR  TokenType = "|"
+	BITXOR TokenType = "^"
+	LSHIFT TokenType = "<<"
+	RSHIFT TokenType = ">>"
+	TILDE  TokenType = "~"
+
+	// Null coalescing & optional chaining
+	NULLCOALESCE TokenType = "??"
+	OPTDOT       TokenType = "?."
+
+	// Arrow (return type annotation + match arms)
+	ARROW TokenType = "->"
+
 	// Delimiters
 	COMMA     TokenType = ","
 	SEMICOLON TokenType = ";"
@@ -75,6 +90,8 @@ const (
 	NIL      TokenType = "NIL"
 	BREAK    TokenType = "BREAK"
 	CONTINUE TokenType = "CONTINUE"
+	MATCH    TokenType = "MATCH"
+	ENUM     TokenType = "ENUM"
 
 	// OOP keywords
 	CLASS   TokenType = "CLASS"
@@ -87,8 +104,6 @@ const (
 	EXPORT TokenType = "EXPORT"
 	IMPORT TokenType = "IMPORT"
 	FROM   TokenType = "FROM"
-
-	ARROW TokenType = "->"
 )
 
 var keywords = map[string]TokenType{
@@ -113,7 +128,8 @@ var keywords = map[string]TokenType{
 	"export":   EXPORT,
 	"import":   IMPORT,
 	"from":     FROM,
-	"int":      IDENT, // types are just identifiers — no special treatment needed
+	"match":    MATCH,
+	"enum":     ENUM,
 }
 
 func LookupIdentifier(identifier string) TokenType {
