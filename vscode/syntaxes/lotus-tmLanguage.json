@@ -13,6 +13,8 @@
     { "include": "#keywords-declaration" },
     { "include": "#class-declaration" },
     { "include": "#function-declaration" },
+    { "include": "#return-type" },
+    { "include": "#type-annotation" },
     { "include": "#self-super" },
     { "include": "#packages" },
     { "include": "#class-instantiation" },
@@ -99,6 +101,24 @@
       "match": "\\b(let|mut|fn|extends)\\b"
     },
 
+    "type-annotation": {
+      "comment": "Colon type annotation: x: int, param: string",
+      "match": "(:)\\s*([a-zA-Z_][a-zA-Z0-9_]*)",
+      "captures": {
+        "1": { "name": "punctuation.separator.type.lotus" },
+        "2": { "name": "entity.name.type.annotation.lotus" }
+      }
+    },
+
+    "return-type": {
+      "comment": "Return type annotation: -> int, -> string",
+      "match": "(->)\\s*([a-zA-Z_][a-zA-Z0-9_]*)",
+      "captures": {
+        "1": { "name": "keyword.operator.arrow.lotus" },
+        "2": { "name": "entity.name.type.annotation.lotus" }
+      }
+    },
+
     "class-declaration": {
       "match": "\\b(class)\\s+([A-Z][a-zA-Z0-9_]*)(?:\\s+(extends)\\s+([A-Z][a-zA-Z0-9_]*))?",
       "captures": {
@@ -124,7 +144,7 @@
 
     "packages": {
       "name": "support.class.lotus",
-      "match": "\\b(Console|Math|OS)\\b(?=\\.)"
+      "match": "\\b(Console|Math|OS|Http|Task)\\b(?=\\.)"
     },
 
     "class-instantiation": {
@@ -144,6 +164,10 @@
 
     "operators": {
       "patterns": [
+        {
+          "name": "keyword.operator.arrow.lotus",
+          "match": "->"
+        },
         {
           "name": "keyword.operator.comparison.lotus",
           "match": "(==|!=|<=|>=|<|>)"

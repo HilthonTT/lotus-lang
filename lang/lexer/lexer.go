@@ -105,7 +105,10 @@ func (l *Lexer) NextToken() token.Token {
 			l.readChar()
 			tok.Type = token.MINUSMINUS
 			tok.Literal = string(ch) + string(l.ch)
-
+		} else if l.peekChar() == '>' {
+			l.readChar()
+			tok.Type = token.ARROW
+			tok.Literal = "->"
 		} else {
 			tok.Type = token.MINUS
 			tok.Literal = "-"

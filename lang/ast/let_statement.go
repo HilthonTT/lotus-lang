@@ -19,6 +19,9 @@ type LetStatement struct {
 
 	// Value is the thing we're storing in the variable.
 	Value Expression
+
+	// Optional type annotation
+	TypeAnnot *TypeAnnotation
 }
 
 func (ls *LetStatement) statementNode() {}

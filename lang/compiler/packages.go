@@ -13,13 +13,14 @@ import (
 
 // BuiltinPackageOrder defines the registration order so global indices
 // are identical across every compiler.New() call.
-var BuiltinPackageOrder = []string{"Console", "Math", "OS"}
+var BuiltinPackageOrder = []string{"Console", "Math", "OS", "Task"}
 
 // Add new packages here — they are automatically injected as globals.
 var BuiltinPackages = map[string]*object.Package{
 	"Console": consolePackage(),
 	"Math":    mathPackage(),
 	"OS":      osPackage(),
+	"Task":    taskPackage(),
 }
 
 func consolePackage() *object.Package {

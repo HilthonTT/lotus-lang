@@ -11,6 +11,8 @@ type FunctionLiteral struct {
 	Name       string // optional, empty for anonymous
 	Parameters []*Identifier
 	Body       *BlockStatement
+	ParamTypes []*TypeAnnotation // parallel to Parameters, may be nil entries
+	ReturnType *TypeAnnotation   // optional: -> int
 }
 
 func (e *FunctionLiteral) expressionNode() {}

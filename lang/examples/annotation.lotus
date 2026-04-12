@@ -1,0 +1,23 @@
+let x: int = 42
+mut name: string = "Lotus"
+
+fn add(a: int, b: int) -> int {
+    return a + b
+}
+
+fn greet(name: string) -> string {
+    return "Hello, " + name
+}
+
+class Vector {
+    fn init(self, x: float, y: float) {
+        self.x = x
+        self.y = y
+    }
+
+    fn length(self) -> float {
+        return Math.sqrt(self.x * self.x + self.y * self.y)
+    }
+}
+
+print(add(4, 2))

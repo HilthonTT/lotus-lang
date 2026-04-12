@@ -1,0 +1,13 @@
+// tasks.lotus
+fn worker(id: int) {
+    print("Task " + str(id) + " starting")
+    Task.sleep(100)
+    print("Task " + str(id) + " done")
+}
+
+for i in range(0, 5) {
+    Task.spawnWith(worker, i)
+}
+
+Task.wait()
+print("All tasks finished")

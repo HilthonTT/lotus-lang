@@ -345,6 +345,13 @@ func (p *Parser) parseLetStatement() *ast.LetStatement {
 		Value: p.curToken.Literal,
 	}
 
+	// Optional type annotation: let x: int = ...
+	if p.peekTokenIs(token.COLON) {
+		p.nextToken() // consume ':'
+		p.nextToken() // move to type name
+		stmt.TypeAnnot = &ast.TypeAnnotation{Name: p.curToken.Literal}
+	}
+
 	// Check if the next token is an assignement: '='
 	if !p.expectPeek(token.ASSIGN) {
 		return nil
@@ -657,7 +664,14 @@ func (p *Parser) parseFunctionLiteral() ast.Expression {
 	if !p.expectPeek(token.LPAREN) {
 		return nil
 	}
-	lit.Parameters = p.parseFunctionParameters()
+	lit.Parameters, lit.ParamTypes = p.parseFunctionParameters()
+
+	// Optional return type: -> int
+	if p.peekTokenIs(token.ARROW) {
+		p.nextToken() // consume '->'
+		p.nextToken() // move to type name
+		lit.ReturnType = &ast.TypeAnnotation{Name: p.curToken.Literal}
+	}
 
 	if !p.expectPeek(token.LBRACE) {
 		return nil
@@ -668,21 +682,24 @@ func (p *Parser) parseFunctionLiteral() ast.Expression {
 
 // parseFunctionParameters allows 'self' and 'super' keyword tokens as parameter names
 // so that method definitions can include them naturally.
-func (p *Parser) parseFunctionParameters() []*ast.Identifier {
+// parseFunctionParameters — each param can have ': Type'
+func (p *Parser) parseFunctionParameters() ([]*ast.Identifier, []*ast.TypeAnnotation) {
 	var params []*ast.Identifier
+	var types []*ast.TypeAnnotation
 
 	if p.peekTokenIs(token.RPAREN) {
 		p.nextToken()
-		return params
+		return params, types
 	}
 	p.nextToken()
 
 	if !p.isParamToken() {
 		p.errors = append(p.errors, fmt.Sprintf(
 			"line %d: expected parameter name, got %s", p.curToken.Line, p.curToken.Type))
-		return nil
+		return nil, nil
 	}
 	params = append(params, &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal})
+	types = append(types, p.parseOptionalTypeAnnot())
 
 	for p.peekTokenIs(token.COMMA) {
 		p.nextToken()
@@ -690,14 +707,26 @@ func (p *Parser) parseFunctionParameters() []*ast.Identifier {
 		if !p.isParamToken() {
 			p.errors = append(p.errors, fmt.Sprintf(
 				"line %d: expected parameter name, got %s", p.curToken.Line, p.curToken.Type))
-			return nil
+			return nil, nil
 		}
 		params = append(params, &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal})
+		types = append(types, p.parseOptionalTypeAnnot())
 	}
+
 	if !p.expectPeek(token.RPAREN) {
-		return nil
+		return nil, nil
 	}
-	return params
+	return params, types
+}
+
+// parseOptionalTypeAnnot reads ': TypeName' if present, else returns nil.
+func (p *Parser) parseOptionalTypeAnnot() *ast.TypeAnnotation {
+	if p.peekTokenIs(token.COLON) {
+		p.nextToken() // consume ':'
+		p.nextToken() // move to type name
+		return &ast.TypeAnnotation{Name: p.curToken.Literal}
+	}
+	return nil
 }
 
 // isParamToken returns true if the current token is valid as a parameter name.

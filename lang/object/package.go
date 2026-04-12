@@ -12,6 +12,7 @@ type PackageFunction func(args ...Object) Object
 type Package struct {
 	Name      string
 	Functions map[string]PackageFunction
+	CallVM    func(closure *Closure, args []Object) Object
 }
 
 func (p *Package) Type() ObjectType {

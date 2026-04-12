@@ -13,18 +13,14 @@ const (
 	kindModule   = 9
 	kindKeyword  = 14
 	kindField    = 5
+	kindClass    = 7
 )
 
-//go:fix inline
-func intPtr(i int) *int { return new(i) }
-
-//go:fix inline
-func strPtr(s string) *string { return new(s) }
-
 type Analyzer struct {
-	keywords []string
-	builtins []builtinDoc
-	packages map[string][]packageMember
+	keywords  []string
+	typeNames []string
+	builtins  []builtinDoc
+	packages  map[string][]packageMember
 }
 
 type builtinDoc struct {
@@ -45,7 +41,7 @@ var (
 	reLetMut    = regexp.MustCompile(`\b(?:let|mut)\s+([a-zA-Z_][a-zA-Z0-9_]*)`)
 	reFn        = regexp.MustCompile(`\bfn\s+([a-zA-Z_][a-zA-Z0-9_]*)`)
 	reClass     = regexp.MustCompile(`\bclass\s+([A-Z][a-zA-Z0-9_]*)`)
-	reVarClass  = regexp.MustCompile(`\b(?:let|mut)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*([A-Z][a-zA-Z0-9_]*)\s*\(`)
+	reVarClass  = regexp.MustCompile(`\b(?:let|mut)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*(?::\s*[a-zA-Z_][a-zA-Z0-9_]*)?\s*=\s*([A-Z][a-zA-Z0-9_]*)\s*\(`)
 	reSelfField = regexp.MustCompile(`\bself\.([a-zA-Z_][a-zA-Z0-9_]*)\s*=`)
 	reMethod    = regexp.MustCompile(`\bfn\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(\s*self`)
 )
@@ -57,6 +53,9 @@ func NewAnalyzer() *Analyzer {
 			"while", "for", "in", "return", "break", "continue",
 			"true", "false", "nil", "self", "super",
 			"import", "export", "from",
+		},
+		typeNames: []string{
+			"int", "float", "string", "bool", "array", "map", "nil",
 		},
 		builtins: []builtinDoc{
 			{"print", "print(...values)", "Prints values to stdout separated by spaces."},
@@ -88,13 +87,20 @@ func NewAnalyzer() *Analyzer {
 				{"pi", "Math.pi() -> float", "Returns π (3.141592653589793)."},
 			},
 			"OS": {
-				{"exit", "OS.exit([code])", "Exits the process."},
-				{"args", "OS.args() -> array", "Returns command-line arguments."},
-				{"env", "OS.env(key) -> string | nil", "Returns an environment variable."},
-				{"readFile", "OS.readFile(path) -> string | nil", "Reads a file as a string."},
-				{"writeFile", "OS.writeFile(path, content) -> bool", "Writes a string to a file."},
+				{"exit", "OS.exit([code])", "Exits the process with an optional exit code."},
+				{"args", "OS.args() -> array", "Returns command-line arguments as an array."},
+				{"env", "OS.env(key) -> string | nil", "Returns an environment variable by key."},
+				{"readFile", "OS.readFile(path) -> string | nil", "Reads a file and returns its contents as a string."},
+				{"writeFile", "OS.writeFile(path, content) -> bool", "Writes a string to a file. Returns true on success."},
 				{"parseInt", "OS.parseInt(s) -> int | nil", "Parses a string to an integer."},
 				{"parseFloat", "OS.parseFloat(s) -> float | nil", "Parses a string to a float."},
+			},
+			"Task": {
+				{"spawn", "Task.spawn(fn())", "Runs a zero-argument Lotus closure in a new goroutine."},
+				{"spawnWith", "Task.spawnWith(fn(arg), arg)", "Runs a Lotus closure in a new goroutine, passing one argument."},
+				{"wait", "Task.wait()", "Blocks until all spawned tasks have finished."},
+				{"sleep", "Task.sleep(ms: int)", "Pauses the current task for the given number of milliseconds."},
+				{"mutex", "Task.mutex() -> Mutex", "Creates and returns a new mutex object."},
 			},
 		},
 	}
@@ -146,45 +152,40 @@ func (a *Analyzer) Complete(source, prefix, receiver string) []CompletionItem {
 	var items []CompletionItem
 
 	if receiver != "" {
-		// Check builtin packages first
+		// Built-in packages
 		if members, ok := a.packages[receiver]; ok {
 			for _, m := range members {
 				m := m
 				items = append(items, CompletionItem{
 					Label:         m.name,
-					Kind:          intPtr(kindMethod),
-					Detail:        strPtr(m.signature),
+					Kind:          new(kindMethod),
+					Detail:        new(m.signature),
 					Documentation: &MarkupContent{Kind: "markdown", Value: m.doc},
 				})
 			}
 			return items
 		}
 
-		// Check if receiver is a variable with a known class type
+		// Instance fields and methods
 		varTypes := extractVarTypes(source)
 		classes := extractClasses(source)
-
 		className, ok := varTypes[receiver]
 		if !ok {
-			// Maybe the receiver is itself a class name (static-style call)
 			className = receiver
 		}
-
 		if info, ok := classes[className]; ok {
 			for _, field := range info.fields {
-				field := field
 				items = append(items, CompletionItem{
 					Label:  field,
-					Kind:   intPtr(kindField),
-					Detail: strPtr(className + "." + field),
+					Kind:   new(kindField),
+					Detail: new(className + "." + field),
 				})
 			}
 			for _, method := range info.methods {
-				method := method
 				items = append(items, CompletionItem{
 					Label:  method,
-					Kind:   intPtr(kindMethod),
-					Detail: strPtr(className + "." + method + "(self, ...)"),
+					Kind:   new(kindMethod),
+					Detail: new(className + "." + method + "(self, ...)"),
 				})
 			}
 			return items
@@ -193,48 +194,91 @@ func (a *Analyzer) Complete(source, prefix, receiver string) []CompletionItem {
 		return items
 	}
 
-	// No receiver — return keywords, builtins, packages, user symbols
+	// Keywords
 	for _, kw := range a.keywords {
 		if strings.HasPrefix(kw, prefix) {
 			kw := kw
-			items = append(items, CompletionItem{Label: kw, Kind: intPtr(kindKeyword)})
+			items = append(items, CompletionItem{Label: kw, Kind: new(kindKeyword)})
 		}
 	}
+
+	// Type names (shown as keywords in completion)
+	for _, t := range a.typeNames {
+		if strings.HasPrefix(t, prefix) {
+			t := t
+			items = append(items, CompletionItem{
+				Label:         t,
+				Kind:          new(kindKeyword),
+				Detail:        new("type"),
+				Documentation: &MarkupContent{Kind: "markdown", Value: fmt.Sprintf("Built-in type: `%s`", t)},
+			})
+		}
+	}
+
+	// Builtins
 	for _, b := range a.builtins {
 		if strings.HasPrefix(b.name, prefix) {
 			b := b
 			items = append(items, CompletionItem{
 				Label:         b.name,
-				Kind:          intPtr(kindFunction),
-				Detail:        strPtr(b.signature),
+				Kind:          new(kindFunction),
+				Detail:        new(b.signature),
 				Documentation: &MarkupContent{Kind: "markdown", Value: b.doc},
 			})
 		}
 	}
+
+	// Packages
 	for name := range a.packages {
 		if strings.HasPrefix(name, prefix) {
 			name := name
-			items = append(items, CompletionItem{Label: name, Kind: intPtr(kindModule)})
+			items = append(items, CompletionItem{Label: name, Kind: new(kindModule)})
 		}
 	}
+
+	// User symbols
 	for _, name := range extractUserSymbols(source) {
 		if strings.HasPrefix(name, prefix) && name != prefix {
 			name := name
-			items = append(items, CompletionItem{Label: name, Kind: intPtr(kindVariable)})
+			items = append(items, CompletionItem{Label: name, Kind: new(kindVariable)})
 		}
 	}
+
 	return items
 }
 
 func (a *Analyzer) HoverDoc(word string) string {
+	// Builtins
 	for _, b := range a.builtins {
 		if b.name == word {
 			return fmt.Sprintf("```\n%s\n```\n\n%s", b.signature, b.doc)
 		}
 	}
-	if _, ok := a.packages[word]; ok {
-		return fmt.Sprintf("**%s** — built-in package", word)
+
+	// Packages
+	if members, ok := a.packages[word]; ok {
+		var sb strings.Builder
+		fmt.Fprintf(&sb, "**%s** — built-in package\n\n", word)
+		sb.WriteString("| Member | Signature |\n|--------|----------|\n")
+		for _, m := range members {
+			fmt.Fprintf(&sb, "| `%s` | `%s` |\n", m.name, m.signature)
+		}
+		return sb.String()
 	}
+
+	// Type names
+	typeDoc := map[string]string{
+		"int":    "Built-in integer type. Example: `let x: int = 42`",
+		"float":  "Built-in float type. Example: `let x: float = 3.14`",
+		"string": "Built-in string type. Example: `let s: string = \"hello\"`",
+		"bool":   "Built-in boolean type. Values: `true` or `false`",
+		"array":  "Built-in array type. Example: `let a: array = [1, 2, 3]`",
+		"map":    "Built-in map type. Example: `let m: map = {\"key\": \"value\"}`",
+	}
+	if doc, ok := typeDoc[word]; ok {
+		return doc
+	}
+
 	return ""
 }
 

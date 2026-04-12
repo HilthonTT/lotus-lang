@@ -87,6 +87,8 @@ const (
 	EXPORT TokenType = "EXPORT"
 	IMPORT TokenType = "IMPORT"
 	FROM   TokenType = "FROM"
+
+	ARROW TokenType = "->"
 )
 
 var keywords = map[string]TokenType{
@@ -111,6 +113,7 @@ var keywords = map[string]TokenType{
 	"export":   EXPORT,
 	"import":   IMPORT,
 	"from":     FROM,
+	"int":      IDENT, // types are just identifiers — no special treatment needed
 }
 
 func LookupIdentifier(identifier string) TokenType {

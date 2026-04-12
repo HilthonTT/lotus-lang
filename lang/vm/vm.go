@@ -3,6 +3,8 @@ package vm
 import (
 	"fmt"
 	"math"
+	"os"
+	"sync"
 
 	"github.com/hilthontt/lotus/code"
 	"github.com/hilthontt/lotus/compiler"
@@ -37,6 +39,7 @@ type VM struct {
 	stack         []object.Object
 	sp            int // Stack pointer: always points to the next free slot in the stack.
 	globals       []object.Object
+	globalsMu     sync.RWMutex
 	frames        []*Frame
 	framesIndex   int
 	maxFramesUsed int
@@ -58,9 +61,6 @@ func NewWithLoader(bytecode *compiler.Bytecode, loader ModuleLoader) *VM {
 
 	globals := make([]object.Object, GlobalsSize)
 
-	// Seed package globals. The symbol table assigns indices in definition
-	// order, and packages are defined after builtins — so we resolve each
-	// name against a fresh compiler to find its index.
 	seedCompiler := compiler.New()
 	for _, name := range compiler.BuiltinPackageOrder {
 		pkg := compiler.BuiltinPackages[name]
@@ -70,7 +70,7 @@ func NewWithLoader(bytecode *compiler.Bytecode, loader ModuleLoader) *VM {
 		}
 	}
 
-	return &VM{
+	machine := &VM{
 		constants:   bytecode.Constants,
 		stack:       make([]object.Object, StackSize),
 		sp:          0,
@@ -80,6 +80,67 @@ func NewWithLoader(bytecode *compiler.Bytecode, loader ModuleLoader) *VM {
 		loader:      loader,
 		moduleCache: make(map[string]*object.Module),
 	}
+
+	for _, name := range []string{"Task"} {
+		sym, ok := seedCompiler.PublicResolve(name)
+		if ok {
+			if pkg, ok := globals[sym.Index].(*object.Package); ok {
+				p := pkg
+				p.CallVM = func(closure *object.Closure, args []object.Object) object.Object {
+					return machine.callClosureSync(closure, args)
+				}
+			}
+		}
+	}
+
+	return machine
+}
+
+// callClosureSync calls a Lotus closure synchronously and returns its result.
+// Used by native packages (e.g. Task) to invoke Lotus handler functions.
+func (vm *VM) callClosureSync(cl *object.Closure, args []object.Object) object.Object {
+	fresh := &VM{
+		constants:   vm.constants,
+		stack:       make([]object.Object, StackSize),
+		sp:          0,
+		globals:     vm.globals,
+		frames:      make([]*Frame, MaxFrames),
+		framesIndex: 2, // 0=dummy, 1=worker
+		loader:      vm.loader,
+		moduleCache: vm.moduleCache,
+	}
+
+	// Frame 0: dummy with empty instructions.
+	// When the worker returns, framesIndex drops to 1, currentFrame() = frames[0].
+	// Its ip=-1, len(instructions)-1=-1, so -1 < -1 is false → Run() exits cleanly.
+	dummyFn := &object.CompiledFunction{Instructions: code.Instructions{}}
+	fresh.frames[0] = NewFrame(&object.Closure{Fn: dummyFn}, 0)
+
+	// Frame 1: the actual worker closure.
+	// Stack: [dummy_slot, arg0, arg1, ...]
+	// basePointer=1 so OpReturn sets sp = 1-1 = 0, not -1.
+	fresh.stack[0] = Nil
+	for i, arg := range args {
+		fresh.stack[1+i] = arg
+	}
+	fresh.frames[1] = &Frame{
+		closure:     cl,
+		ip:          -1,
+		basePointer: 1,
+		constants:   cl.Constants,
+	}
+	fresh.sp = 1 + cl.Fn.NumLocals
+
+	if err := fresh.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "task error: %s\n", err)
+		return Nil
+	}
+
+	// Return value was pushed at stack[sp-1] by OpReturn/OpReturnNil
+	if fresh.sp > 0 {
+		return fresh.stack[fresh.sp-1]
+	}
+	return Nil
 }
 
 // NewWithGlobalsState creates a new VM with a compiler's bytecode and pre-existing globals (used in REPL).
@@ -207,13 +268,17 @@ func (vm *VM) Run() error {
 		case code.OpSetGlobal:
 			globalIndex := code.ReadUint16(ins[ip+1:])
 			vm.currentFrame().ip += 2
+			vm.globalsMu.Lock()
 			vm.globals[globalIndex] = vm.pop()
+			vm.globalsMu.Unlock()
 
 		case code.OpGetGlobal:
 			globalIndex := code.ReadUint16(ins[ip+1:])
 			vm.currentFrame().ip += 2
-
-			if err := vm.push(vm.globals[globalIndex]); err != nil {
+			vm.globalsMu.RLock()
+			val := vm.globals[globalIndex]
+			vm.globalsMu.RUnlock()
+			if err := vm.push(val); err != nil {
 				return err
 			}
 
