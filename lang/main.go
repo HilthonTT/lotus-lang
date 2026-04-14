@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/hilthontt/lotus/ast"
 	"github.com/hilthontt/lotus/code"
 	"github.com/hilthontt/lotus/compiler"
 	"github.com/hilthontt/lotus/evaluator"
+	"github.com/hilthontt/lotus/executable"
 	"github.com/hilthontt/lotus/lexer"
 	"github.com/hilthontt/lotus/object"
 	"github.com/hilthontt/lotus/parser"
@@ -27,6 +29,7 @@ func main() {
 	ver := flag.Bool("version", false, "Print version information")
 	playground := flag.Bool("playground", false, "Start the web playground")
 	playgroundAddr := flag.String("playground-addr", ":3000", "Playground server address")
+	buildOut := flag.String("build", "", "Output path for compiled executable (enables build mode)")
 
 	flag.Usage = printHelp
 	flag.Parse()
@@ -54,6 +57,31 @@ func main() {
 			os.Exit(1)
 		}
 		startPlayground(*playgroundAddr, *engine)
+	case *buildOut != "":
+		src := ""
+		output := *buildOut
+
+		if strings.HasSuffix(output, ".lotus") {
+			// lotus --build file.lotus  (no separate output arg)
+			src = output
+			output = ""
+		} else {
+			// lotus --build myapp.exe file.lotus
+			if len(flag.Args()) != 1 {
+				fmt.Fprintln(os.Stderr, "error: expected a file path\nUsage: lotus --build [output.exe] <file.lotus>")
+				os.Exit(1)
+			}
+			src = flag.Args()[0]
+		}
+
+		if err := validateEngine(*engine); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if err := executable.BuildExecutable(src, output, *engine); err != nil {
+			fmt.Fprintln(os.Stderr, "build error:", err)
+			os.Exit(1)
+		}
 	default:
 		if err := validateEngine(*engine); err != nil {
 			fmt.Fprintln(os.Stderr, err)

@@ -11,6 +11,7 @@
     { "include": "#constants" },
     { "include": "#keywords-control" },
     { "include": "#keywords-declaration" },
+    { "include": "#enum-declaration" },
     { "include": "#class-declaration" },
     { "include": "#function-declaration" },
     { "include": "#return-type" },
@@ -27,7 +28,6 @@
       "name": "comment.line.double-slash.lotus",
       "match": "//.*$"
     },
-
     "strings": {
       "name": "string.quoted.double.lotus",
       "begin": "\"",
@@ -36,30 +36,39 @@
         {
           "name": "constant.character.escape.lotus",
           "match": "\\\\[ntr\\\\\"']"
+        },
+        {
+          "comment": "String interpolation: ${expr}",
+          "begin": "\\$\\{",
+          "end": "\\}",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.template-expression.begin.lotus"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.template-expression.end.lotus"
+            }
+          },
+          "patterns": [{ "include": "$self" }]
         }
       ]
     },
-
     "numbers": {
       "patterns": [
         {
           "name": "constant.numeric.float.lotus",
           "match": "\\b[0-9]+\\.[0-9]+\\b"
         },
-        {
-          "name": "constant.numeric.integer.lotus",
-          "match": "\\b[0-9]+\\b"
-        }
+        { "name": "constant.numeric.integer.lotus", "match": "\\b[0-9]+\\b" }
       ]
     },
-
     "constants": {
       "name": "constant.language.lotus",
       "match": "\\b(true|false|nil)\\b"
     },
-
     "import-statement": {
-      "comment": "import { add, Foo } from \"path\"",
       "begin": "\\b(import)\\s*(\\{)",
       "end": "\\}\\s*(from)\\s*(\"[^\"]*\")",
       "beginCaptures": {
@@ -79,46 +88,43 @@
           "name": "variable.other.import.lotus",
           "match": "\\b[a-z_][a-zA-Z0-9_]*\\b"
         },
-        {
-          "name": "punctuation.separator.lotus",
-          "match": ","
-        }
+        { "name": "punctuation.separator.lotus", "match": "," }
       ]
     },
-
     "export-keyword": {
       "name": "keyword.control.export.lotus",
       "match": "\\bexport\\b"
     },
-
     "keywords-control": {
       "name": "keyword.control.lotus",
-      "match": "\\b(if|else|while|for|in|break|continue|return)\\b"
+      "match": "\\b(if|else|while|for|in|break|continue|return|match)\\b"
     },
-
     "keywords-declaration": {
       "name": "keyword.declaration.lotus",
       "match": "\\b(let|mut|fn|extends)\\b"
     },
-
-    "type-annotation": {
-      "comment": "Colon type annotation: x: int, param: string",
-      "match": "(:)\\s*([a-zA-Z_][a-zA-Z0-9_]*)",
-      "captures": {
-        "1": { "name": "punctuation.separator.type.lotus" },
-        "2": { "name": "entity.name.type.annotation.lotus" }
-      }
+    "enum-declaration": {
+      "begin": "\\b(enum)\\s+([A-Z][a-zA-Z0-9_]*)",
+      "end": "\\}",
+      "beginCaptures": {
+        "1": { "name": "keyword.declaration.lotus" },
+        "2": { "name": "entity.name.type.enum.lotus" }
+      },
+      "patterns": [
+        {
+          "match": "\\b([A-Z][a-zA-Z0-9_]*)\\s*(?=\\()",
+          "captures": { "1": { "name": "entity.name.type.lotus" } }
+        },
+        {
+          "match": "\\b([A-Z][a-zA-Z0-9_]*)\\b",
+          "captures": { "1": { "name": "entity.name.type.lotus" } }
+        },
+        {
+          "name": "variable.parameter.lotus",
+          "match": "\\b[a-z_][a-zA-Z0-9_]*\\b"
+        }
+      ]
     },
-
-    "return-type": {
-      "comment": "Return type annotation: -> int, -> string",
-      "match": "(->)\\s*([a-zA-Z_][a-zA-Z0-9_]*)",
-      "captures": {
-        "1": { "name": "keyword.operator.arrow.lotus" },
-        "2": { "name": "entity.name.type.annotation.lotus" }
-      }
-    },
-
     "class-declaration": {
       "match": "\\b(class)\\s+([A-Z][a-zA-Z0-9_]*)(?:\\s+(extends)\\s+([A-Z][a-zA-Z0-9_]*))?",
       "captures": {
@@ -128,7 +134,6 @@
         "4": { "name": "entity.name.type.class.lotus" }
       }
     },
-
     "function-declaration": {
       "match": "\\b(fn)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()",
       "captures": {
@@ -136,71 +141,68 @@
         "2": { "name": "entity.name.function.lotus" }
       }
     },
-
+    "type-annotation": {
+      "match": "(:)\\s*(int|float|string|bool|array|map|[A-Z][a-zA-Z0-9_]*)",
+      "captures": {
+        "1": { "name": "punctuation.separator.type.lotus" },
+        "2": { "name": "entity.name.type.annotation.lotus" }
+      }
+    },
+    "return-type": {
+      "match": "(->)\\s*(int|float|string|bool|array|map|[A-Z][a-zA-Z0-9_]*)",
+      "captures": {
+        "1": { "name": "keyword.operator.arrow.lotus" },
+        "2": { "name": "entity.name.type.annotation.lotus" }
+      }
+    },
     "self-super": {
       "name": "variable.language.lotus",
       "match": "\\b(self|super)\\b"
     },
-
     "packages": {
       "name": "support.class.lotus",
-      "match": "\\b(Console|Math|OS|Http|Task)\\b(?=\\.)"
+      "match": "\\b(Console|Math|OS|Http|Task|String|Array)\\b(?=[.?])"
     },
-
     "class-instantiation": {
-      "comment": "Foo(...) — uppercase call is a class constructor",
       "match": "\\b([A-Z][a-zA-Z0-9_]*)\\s*(?=\\()",
-      "captures": {
-        "1": { "name": "entity.name.type.lotus" }
-      }
+      "captures": { "1": { "name": "entity.name.type.lotus" } }
     },
-
     "function-call": {
       "match": "\\b([a-z_][a-zA-Z0-9_]*)\\s*(?=\\()",
-      "captures": {
-        "1": { "name": "entity.name.function.call.lotus" }
-      }
+      "captures": { "1": { "name": "entity.name.function.call.lotus" } }
     },
-
     "operators": {
       "patterns": [
-        {
-          "name": "keyword.operator.arrow.lotus",
-          "match": "->"
-        },
+        { "name": "keyword.operator.arrow.lotus", "match": "->" },
+        { "name": "keyword.operator.null-coalescing.lotus", "match": "\\?\\?" },
+        { "name": "keyword.operator.optional-chain.lotus", "match": "\\?\\." },
         {
           "name": "keyword.operator.comparison.lotus",
           "match": "(==|!=|<=|>=|<|>)"
         },
+        { "name": "keyword.operator.logical.lotus", "match": "(&&|\\|\\||!)" },
         {
-          "name": "keyword.operator.logical.lotus",
-          "match": "(&&|\\|\\||!)"
+          "name": "keyword.operator.bitwise.lotus",
+          "match": "(<<|>>|&|\\||\\^|~)"
         },
         {
           "name": "keyword.operator.arithmetic.lotus",
           "match": "(\\+\\+|--|\\+|-|\\*|/|%)"
         },
-        {
-          "name": "keyword.operator.ternary.lotus",
-          "match": "\\?"
-        },
+        { "name": "keyword.operator.ternary.lotus", "match": "\\?(?![?.])" },
         {
           "name": "keyword.operator.assignment.lotus",
           "match": "(?<![=!<>])=(?!=)"
         }
       ]
     },
-
     "identifiers": {
       "patterns": [
         {
           "name": "entity.name.type.lotus",
           "match": "\\b[A-Z][a-zA-Z0-9_]*\\b"
         },
-        {
-          "name": "variable.other.lotus",
-          "match": "\\b[a-z_][a-zA-Z0-9_]*\\b"
-        }
+        { "name": "variable.other.lotus", "match": "\\b[a-z_][a-zA-Z0-9_]*\\b" }
       ]
     }
   }
