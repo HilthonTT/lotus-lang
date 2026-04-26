@@ -37,6 +37,18 @@ const (
 	SLASH      TokenType = "/"
 	MODULO     TokenType = "%"
 
+	// Compound assignement
+	PLUS_ASSIGN   TokenType = "+="
+	MINUS_ASSIGN  TokenType = "-="
+	MUL_ASSIGN    TokenType = "*="
+	DIV_ASSIGN    TokenType = "/="
+	MOD_ASSIGN    TokenType = "%="
+	AND_ASSIGN    TokenType = "&="
+	OR_ASSIGN     TokenType = "|="
+	XOR_ASSIGN    TokenType = "^="
+	LSHIFT_ASSIGN TokenType = "<<="
+	RSHIFT_ASSIGN TokenType = ">>="
+
 	LT    TokenType = "<"
 	GT    TokenType = ">"
 	EQ    TokenType = "=="
@@ -61,6 +73,12 @@ const (
 
 	// Arrow (return type annotation + match arms)
 	ARROW TokenType = "->"
+
+	// Spread / variadic
+	ELLIPSIS TokenType = "..."
+
+	// Pipe operator
+	PIPE TokenType = "|>"
 
 	// Delimiters
 	COMMA     TokenType = ","

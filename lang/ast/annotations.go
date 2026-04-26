@@ -5,3 +5,13 @@ package ast
 type TypeAnnotation struct {
 	Name string // "int", "float", "string", "bool", "array", "map", or a class name
 }
+
+func (ta *TypeAnnotation) expressionNode() {}
+
+func (ta *TypeAnnotation) TokenLiteral() string {
+	return ta.Name
+}
+
+func (ta *TypeAnnotation) String() string {
+	return ta.Name
+}

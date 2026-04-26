@@ -14,6 +14,7 @@ type FunctionLiteral struct {
 	ParamTypes []*TypeAnnotation // parallel to Parameters, may be nil entries
 	ReturnType *TypeAnnotation   // optional: -> int
 	TypeParams []TypeParam
+	IsVariadic bool
 }
 
 func (e *FunctionLiteral) expressionNode() {}

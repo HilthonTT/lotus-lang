@@ -202,6 +202,89 @@ var Builtins = []BuiltinDef{
 			return &object.Boolean{Value: iface.Implements(args[0])}
 		},
 	},
+	{
+		Name: "ok",
+		Fn: func(args ...object.Object) object.Object {
+			if len(args) == 0 {
+				return object.OkResult(&object.Nil{})
+			}
+			return object.OkResult(args[0])
+		},
+	},
+	{
+		Name: "err",
+		Fn: func(args ...object.Object) object.Object {
+			if len(args) == 0 {
+				return object.ErrResult("error")
+			}
+			switch v := args[0].(type) {
+			case *object.String:
+				return object.ErrResult(v.Value)
+			case *object.LotusError:
+				return object.ErrResult(v.Message)
+			default:
+				return object.ErrResult(args[0].Inspect())
+			}
+		},
+	},
+	{
+		Name: "isOk",
+		Fn: func(args ...object.Object) object.Object {
+			if len(args) != 1 {
+				return &object.Boolean{Value: false}
+			}
+			r, ok := args[0].(*object.Result)
+			if !ok {
+				return &object.Boolean{Value: false}
+			}
+			return &object.Boolean{Value: r.Ok}
+		},
+	},
+	{
+		Name: "isErr",
+		Fn: func(args ...object.Object) object.Object {
+			if len(args) != 1 {
+				return &object.Boolean{Value: false}
+			}
+			r, ok := args[0].(*object.Result)
+			if !ok {
+				return &object.Boolean{Value: false}
+			}
+			return &object.Boolean{Value: !r.Ok}
+		},
+	},
+	{
+		Name: "unwrap",
+		Fn: func(args ...object.Object) object.Object {
+			if len(args) != 1 {
+				return &object.Nil{}
+			}
+			r, ok := args[0].(*object.Result)
+			if !ok {
+				return args[0]
+			}
+			if !r.Ok {
+				return &object.LotusError{Message: "unwrap called on err: " + r.ErrMsg}
+			}
+			return r.Value
+		},
+	},
+	{
+		Name: "unwrapOr",
+		Fn: func(args ...object.Object) object.Object {
+			if len(args) != 2 {
+				return &object.Nil{}
+			}
+			r, ok := args[0].(*object.Result)
+			if !ok {
+				return args[0]
+			}
+			if !r.Ok {
+				return args[1]
+			}
+			return r.Value
+		},
+	},
 }
 
 func builtinIndex(name string) int {

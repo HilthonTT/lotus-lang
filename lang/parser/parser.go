@@ -20,6 +20,7 @@ type (
 const (
 	_ int = iota
 	LOWEST
+	PIPE_PREC    // |>
 	NULLCOALESCE // ??
 	TERNARY      // ?:
 	OR_PREC      // ||
@@ -63,6 +64,7 @@ var precedences = map[token.TokenType]int{
 	token.DOT:          INDEX, // field access binds as tightly as indexing
 	token.OPTDOT:       INDEX,
 	token.QUESTION:     TERNARY,
+	token.PIPE:         PIPE_PREC,
 }
 
 type Parser struct {
@@ -119,6 +121,7 @@ func New(l *lexer.Lexer) *Parser {
 		token.SUPER:    p.parseSuperExpression,
 		token.MATCH:    p.parseMatchExpression,
 		token.TILDE:    p.parsePrefixExpression,
+		token.ELLIPSIS: p.parseSpreadExpression,
 	}
 
 	p.infixParseFns = map[token.TokenType]infixParseFn{
@@ -146,6 +149,7 @@ func New(l *lexer.Lexer) *Parser {
 		token.LSHIFT:       p.parseInfixExpression,
 		token.RSHIFT:       p.parseInfixExpression,
 		token.OPTDOT:       p.parseOptionalDotExpression,
+		token.PIPE:         p.parsePipeExpression,
 	}
 
 	p.postfixParseFns = map[token.TokenType]postfixParseFunc{
@@ -226,7 +230,7 @@ func (p *Parser) ParseProgram() *ast.Program {
 func (p *Parser) parseStatement() ast.Statement {
 	switch p.curToken.Type {
 	case token.LET, token.MUT:
-		return p.parseLetStatement()
+		return p.parseLetStatementWithDestructure()
 	case token.RETURN:
 		return p.parseReturnStatement()
 	case token.WHILE:
@@ -532,20 +536,47 @@ func (p *Parser) parseWhileStatement() *ast.WhileStatement {
 	return stmt
 }
 
-func (p *Parser) parseForStatement() *ast.ForStatement {
-	stmt := &ast.ForStatement{Token: p.curToken}
+func (p *Parser) parseForStatement() ast.Statement {
+	tok := p.curToken
 
 	if !p.expectPeek(token.IDENT) {
 		return nil
 	}
-	stmt.Variable = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+	firstName := &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
 
+	// Detect "for i, item in arr"
+	if p.peekTokenIs(token.COMMA) {
+		p.nextToken() // consume ','
+		if !p.expectPeek(token.IDENT) {
+			return nil
+		}
+		secondName := &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+		if !p.expectPeek(token.IN) {
+			return nil
+		}
+		p.nextToken()
+		iterable := p.parseExpression(LOWEST)
+		if !p.expectPeek(token.LBRACE) {
+			return nil
+		}
+		body := p.parseBlockStatement()
+		return &ast.ForIndexStatement{
+			Token:    tok,
+			Index:    firstName,
+			Variable: secondName,
+			Iterable: iterable,
+			Body:     body,
+		}
+	}
+
+	// Original "for item in arr"
+	stmt := &ast.ForStatement{Token: tok}
+	stmt.Variable = firstName
 	if !p.expectPeek(token.IN) {
 		return nil
 	}
 	p.nextToken()
 	stmt.Iterable = p.parseExpression(LOWEST)
-
 	if !p.expectPeek(token.LBRACE) {
 		return nil
 	}
@@ -677,6 +708,21 @@ func (p *Parser) parseExpressionOrAssignStatement() ast.Statement {
 				p.nextToken()
 			}
 			return stmt
+		}
+	}
+
+	if op, ok := compoundOps[p.peekToken.Type]; ok {
+		p.nextToken() // consume operator
+		p.nextToken() // move to RHS
+		val := p.parseExpression(LOWEST)
+		if p.peekTokenIs(token.SEMICOLON) {
+			p.nextToken()
+		}
+		return &ast.CompoundAssignStatement{
+			Token:    p.curToken,
+			Name:     expr,
+			Operator: op,
+			Value:    val,
 		}
 	}
 
@@ -896,6 +942,14 @@ func (p *Parser) parseFunctionLiteral() ast.Expression {
 	}
 	lit.Parameters, lit.ParamTypes = p.parseFunctionParameters()
 
+	// Check if last param is variadic (its type annotation is "...array")
+	if len(lit.ParamTypes) > 0 {
+		last := lit.ParamTypes[len(lit.ParamTypes)-1]
+		if last != nil && last.Name == "...array" {
+			lit.IsVariadic = true
+		}
+	}
+
 	// Optional return type: -> int
 	if p.peekTokenIs(token.ARROW) {
 		p.nextToken() // consume '->'
@@ -924,6 +978,17 @@ func (p *Parser) parseFunctionParameters() ([]*ast.Identifier, []*ast.TypeAnnota
 	}
 	p.nextToken()
 
+	if p.curTokenIs(token.ELLIPSIS) {
+		p.nextToken() // move to param name
+		restIdent := &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+		params = append(params, restIdent)
+		types = append(types, &ast.TypeAnnotation{Name: "...array"})
+		if !p.expectPeek(token.RPAREN) {
+			return nil, nil
+		}
+		return params, types
+	}
+
 	if !p.isParamToken() {
 		p.errors = append(p.errors, fmt.Sprintf(
 			"line %d: expected parameter name, got %s", p.curToken.Line, p.curToken.Type))
@@ -935,6 +1000,19 @@ func (p *Parser) parseFunctionParameters() ([]*ast.Identifier, []*ast.TypeAnnota
 	for p.peekTokenIs(token.COMMA) {
 		p.nextToken()
 		p.nextToken()
+
+		// Handle ...rest after fixed params: fn f(a, b, ...rest)
+		if p.curTokenIs(token.ELLIPSIS) {
+			p.nextToken()
+			restIdent := &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+			params = append(params, restIdent)
+			types = append(types, &ast.TypeAnnotation{Name: "...array"})
+			if !p.expectPeek(token.RPAREN) {
+				return nil, nil
+			}
+			return params, types
+		}
+
 		if !p.isParamToken() {
 			p.errors = append(p.errors, fmt.Sprintf(
 				"line %d: expected parameter name, got %s", p.curToken.Line, p.curToken.Type))
@@ -1217,4 +1295,107 @@ func (p *Parser) parseTypeParams() []ast.TypeParam {
 	}
 	// curToken should now be '>'
 	return params
+}
+
+func (p *Parser) parseSpreadExpression() ast.Expression {
+	tok := p.curToken
+	p.nextToken()
+	val := p.parseExpression(LOWEST)
+	return &ast.SpreadExpression{
+		Token: tok,
+		Value: val,
+	}
+}
+
+// parsePipeExpression: left |> fn(args)
+// Desugars: value |> fn(a, b) → fn(value, a, b)
+func (p *Parser) parsePipeExpression(left ast.Expression) ast.Expression {
+	tok := p.curToken
+	p.nextToken()
+	right := p.parseExpression(PIPE_PREC)
+	return &ast.PipeExpression{Token: tok, Left: left, Right: right}
+}
+
+// parseLetStatement — updated to detect destructuring
+// Detects: let [a, b, ...rest] = ...  and  let { name, age } = ...
+func (p *Parser) parseLetStatementWithDestructure() ast.Statement {
+	tok := p.curToken
+	mutable := tok.Type == token.MUT
+
+	// Array destructure: let [a, b, ...rest] = expr
+	if p.peekTokenIs(token.LBRACKET) {
+		p.nextToken() // consume '['
+		stmt := &ast.ArrayDestructureStatement{Token: tok, Mutable: mutable}
+		p.nextToken() // first element
+		for !p.curTokenIs(token.RBRACKET) && !p.curTokenIs(token.EOF) {
+			if p.curTokenIs(token.ELLIPSIS) {
+				p.nextToken()
+				rest := &ast.SpreadExpression{
+					Token: p.curToken,
+					Value: &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal},
+				}
+				stmt.Names = append(stmt.Names, rest)
+			} else if p.curTokenIs(token.IDENT) {
+				stmt.Names = append(stmt.Names, &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal})
+			}
+			if p.peekTokenIs(token.COMMA) {
+				p.nextToken()
+			}
+			p.nextToken()
+		}
+		if !p.expectPeek(token.ASSIGN) {
+			return nil
+		}
+		p.nextToken()
+		stmt.Value = p.parseExpression(LOWEST)
+		if p.peekTokenIs(token.SEMICOLON) {
+			p.nextToken()
+		}
+		return stmt
+	}
+
+	// Map destructure: let { name, age } = expr
+	if p.peekTokenIs(token.LBRACE) {
+		p.nextToken() // consume '{'
+		stmt := &ast.MapDestructureStatement{Token: tok, Mutable: mutable}
+		p.nextToken()
+		for !p.curTokenIs(token.RBRACE) && !p.curTokenIs(token.EOF) {
+			if p.curTokenIs(token.IDENT) {
+				stmt.Keys = append(stmt.Keys, &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal})
+			}
+			if p.peekTokenIs(token.COMMA) {
+				p.nextToken()
+			}
+			p.nextToken()
+		}
+		if !p.expectPeek(token.ASSIGN) {
+			return nil
+		}
+		p.nextToken()
+		stmt.Value = p.parseExpression(LOWEST)
+		if p.peekTokenIs(token.SEMICOLON) {
+			p.nextToken()
+		}
+		return stmt
+	}
+
+	// Fall through to original parseLetStatement logic
+	return p.parseLetStatement()
+}
+
+// parseExpressionOrAssignStatement — add compound assignment detection.
+// Add this BEFORE the existing p.peekTokenIs(token.ASSIGN) check:
+//
+// Compound assignment operators:
+var compoundOps = map[token.TokenType]string{
+	token.PLUS_ASSIGN:   "+=",
+	token.MINUS_ASSIGN:  "-=",
+	token.MUL_ASSIGN:    "*=",
+	token.DIV_ASSIGN:    "/=",
+	token.MOD_ASSIGN:    "%=",
+	token.AND_ASSIGN:    "&=",
+	token.OR_ASSIGN:     "|=",
+	token.XOR_ASSIGN:    "^=",
+	token.LSHIFT_ASSIGN: "<<=",
+	token.RSHIFT_ASSIGN: ">>=",
 }

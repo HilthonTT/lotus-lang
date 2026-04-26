@@ -13,6 +13,7 @@ type CompiledFunction struct {
 	NumLocals    int
 	NumParams    int
 	Name         string
+	IsVariadic   bool
 }
 
 func (o *CompiledFunction) Type() ObjectType {

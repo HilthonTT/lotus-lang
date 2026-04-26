@@ -7,50 +7,53 @@ import (
 
 // opcodeComments provides short inline descriptions for the disassembler.
 var opcodeComments = map[Opcode]string{
-	OpConstant:     "push constant from pool",
-	OpPop:          "discard top of stack",
-	OpTrue:         "push true",
-	OpFalse:        "push false",
-	OpNil:          "push nil",
-	OpAdd:          "integer/float addition",
-	OpSub:          "subtraction",
-	OpMul:          "multiplication",
-	OpDiv:          "division",
-	OpMod:          "modulo",
-	OpNegate:       "unary minus",
-	OpEqual:        "equality check",
-	OpNotEqual:     "inequality check",
-	OpGreater:      "greater-than comparison",
-	OpGreaterEq:    "greater-than-or-equal comparison",
-	OpNot:          "logical NOT",
-	OpJump:         "unconditional jump",
-	OpJumpFalse:    "jump if falsy (pops)",
-	OpGetGlobal:    "load global variable",
-	OpSetGlobal:    "store global variable",
-	OpGetLocal:     "load local variable",
-	OpSetLocal:     "store local variable",
-	OpGetFree:      "load captured (free) variable",
-	OpGetBuiltin:   "load built-in function by index",
-	OpArray:        "build array from N stack elements",
-	OpMap:          "build map from N*2 stack elements",
-	OpIndex:        "index into array/map/string",
-	OpIndexSet:     "assign to array/map index",
-	OpClosure:      "create closure with free variables",
-	OpCall:         "call function with N arguments",
-	OpReturn:       "return value from function",
-	OpReturnNil:    "return nil from function",
-	OpLoop:         "jump backward (loop)",
-	OpConcat:       "string concatenation",
-	OpSetFree:      "update captured (free) variable",
-	OpNewClass:     "create a new class object",
-	OpSetSuper:     "pop super+class, link superclass, push class",
-	OpDefineMethod: "pop closure+class, add method to class, push class",
-	OpGetField:     "pop instance, push named field value",
-	OpSetField:     "pop value+instance, set named field",
-	OpInvokeMethod: "invoke named method with N args (self is receiver)",
-	OpGetSuper:     "push super-accessor for current self",
-	OpRunModule:    "compile+run module file, push module object",
-	OpDup:          "duplicate top of stack",
+	OpConstant:       "push constant from pool",
+	OpPop:            "discard top of stack",
+	OpTrue:           "push true",
+	OpFalse:          "push false",
+	OpNil:            "push nil",
+	OpAdd:            "integer/float addition",
+	OpSub:            "subtraction",
+	OpMul:            "multiplication",
+	OpDiv:            "division",
+	OpMod:            "modulo",
+	OpNegate:         "unary minus",
+	OpEqual:          "equality check",
+	OpNotEqual:       "inequality check",
+	OpGreater:        "greater-than comparison",
+	OpGreaterEq:      "greater-than-or-equal comparison",
+	OpNot:            "logical NOT",
+	OpJump:           "unconditional jump",
+	OpJumpFalse:      "jump if falsy (pops)",
+	OpGetGlobal:      "load global variable",
+	OpSetGlobal:      "store global variable",
+	OpGetLocal:       "load local variable",
+	OpSetLocal:       "store local variable",
+	OpGetFree:        "load captured (free) variable",
+	OpGetBuiltin:     "load built-in function by index",
+	OpArray:          "build array from N stack elements",
+	OpMap:            "build map from N*2 stack elements",
+	OpIndex:          "index into array/map/string",
+	OpIndexSet:       "assign to array/map index",
+	OpClosure:        "create closure with free variables",
+	OpCall:           "call function with N arguments",
+	OpReturn:         "return value from function",
+	OpReturnNil:      "return nil from function",
+	OpLoop:           "jump backward (loop)",
+	OpConcat:         "string concatenation",
+	OpSetFree:        "update captured (free) variable",
+	OpNewClass:       "create a new class object",
+	OpSetSuper:       "pop super+class, link superclass, push class",
+	OpDefineMethod:   "pop closure+class, add method to class, push class",
+	OpGetField:       "pop instance, push named field value",
+	OpSetField:       "pop value+instance, set named field",
+	OpInvokeMethod:   "invoke named method with N args (self is receiver)",
+	OpGetSuper:       "push super-accessor for current self",
+	OpRunModule:      "compile+run module file, push module object",
+	OpDup:            "duplicate top of stack",
+	OpSpread:         "mark array for spreading into call",
+	OpSpreadCall:     "call with spread arguments",
+	OpArraySliceFrom: "slice array from index to end",
 }
 
 type Opcode byte
@@ -157,6 +160,18 @@ const (
 
 	// Interfaces
 	OpDefineInterface // operand: const_idx of name string (2 bytes)
+
+	// Spread / variadic
+	// OpSpread: pops an array, marks it for spreading.
+	// When OpSpreadCall sees a spread marker, it unpacks the array.
+	OpSpread
+
+	// OpSpreadCall: like OpCall but resolves spread markers on the stack.
+	// Operand: total number of arguments (including spread args).
+	OpSpreadCall
+
+	// OpArraySliceFrom: pops [start_int, array] → pushes array[start:]
+	OpArraySliceFrom
 )
 
 type Definition struct {
@@ -222,6 +237,9 @@ var definitions = map[Opcode]*Definition{
 	OpTryBegin:        {"OpTryBegin", []int{2}},
 	OpTryEnd:          {"OpTryEnd", []int{}},
 	OpDefineInterface: {"OpDefineInterface", []int{2}},
+	OpSpread:          {"OpSpread", []int{}},
+	OpSpreadCall:      {"OpSpreadCall", []int{1}},
+	OpArraySliceFrom:  {"OpArraySliceFrom", []int{}},
 }
 
 // Lookup finds the Definition for a given opcode byte.

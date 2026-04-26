@@ -2,7 +2,7 @@ package compiler
 
 import (
 	"strings"
-	"unicode/utf8"
+	"unicode"
 
 	"github.com/hilthontt/lotus/object"
 )
@@ -11,7 +11,7 @@ func stringPackage() *object.Package {
 	return &object.Package{
 		Name: "String",
 		Functions: map[string]object.PackageFunction{
-			// String.split(str, sep) -> array
+
 			"split": func(args ...object.Object) object.Object {
 				if len(args) != 2 {
 					return &object.Nil{}
@@ -29,7 +29,6 @@ func stringPackage() *object.Package {
 				return &object.Array{Elements: elems}
 			},
 
-			// String.trim(str) -> string
 			"trim": func(args ...object.Object) object.Object {
 				if len(args) != 1 {
 					return &object.Nil{}
@@ -41,7 +40,6 @@ func stringPackage() *object.Package {
 				return &object.String{Value: strings.TrimSpace(s.Value)}
 			},
 
-			// String.trimLeft(str) -> string
 			"trimLeft": func(args ...object.Object) object.Object {
 				if len(args) != 1 {
 					return &object.Nil{}
@@ -50,12 +48,9 @@ func stringPackage() *object.Package {
 				if !ok {
 					return &object.Nil{}
 				}
-				return &object.String{Value: strings.TrimLeftFunc(s.Value, func(r rune) bool {
-					return r == ' ' || r == '\t' || r == '\n' || r == '\r'
-				})}
+				return &object.String{Value: strings.TrimLeftFunc(s.Value, unicode.IsSpace)}
 			},
 
-			// String.trimRight(str) -> string
 			"trimRight": func(args ...object.Object) object.Object {
 				if len(args) != 1 {
 					return &object.Nil{}
@@ -64,12 +59,9 @@ func stringPackage() *object.Package {
 				if !ok {
 					return &object.Nil{}
 				}
-				return &object.String{Value: strings.TrimRightFunc(s.Value, func(r rune) bool {
-					return r == ' ' || r == '\t' || r == '\n' || r == '\r'
-				})}
+				return &object.String{Value: strings.TrimRightFunc(s.Value, unicode.IsSpace)}
 			},
 
-			// String.upper(str) -> string
 			"upper": func(args ...object.Object) object.Object {
 				if len(args) != 1 {
 					return &object.Nil{}
@@ -81,7 +73,6 @@ func stringPackage() *object.Package {
 				return &object.String{Value: strings.ToUpper(s.Value)}
 			},
 
-			// String.lower(str) -> string
 			"lower": func(args ...object.Object) object.Object {
 				if len(args) != 1 {
 					return &object.Nil{}
@@ -93,21 +84,19 @@ func stringPackage() *object.Package {
 				return &object.String{Value: strings.ToLower(s.Value)}
 			},
 
-			// String.replace(str, old, new) -> string
 			"replace": func(args ...object.Object) object.Object {
 				if len(args) != 3 {
 					return &object.Nil{}
 				}
 				s, ok1 := args[0].(*object.String)
 				old, ok2 := args[1].(*object.String)
-				neu, ok3 := args[2].(*object.String)
+				new_, ok3 := args[2].(*object.String)
 				if !ok1 || !ok2 || !ok3 {
 					return &object.Nil{}
 				}
-				return &object.String{Value: strings.ReplaceAll(s.Value, old.Value, neu.Value)}
+				return &object.String{Value: strings.ReplaceAll(s.Value, old.Value, new_.Value)}
 			},
 
-			// String.contains(str, substr) -> bool
 			"contains": func(args ...object.Object) object.Object {
 				if len(args) != 2 {
 					return &object.Nil{}
@@ -120,7 +109,6 @@ func stringPackage() *object.Package {
 				return &object.Boolean{Value: strings.Contains(s.Value, sub.Value)}
 			},
 
-			// String.startsWith(str, prefix) -> bool
 			"startsWith": func(args ...object.Object) object.Object {
 				if len(args) != 2 {
 					return &object.Nil{}
@@ -133,7 +121,6 @@ func stringPackage() *object.Package {
 				return &object.Boolean{Value: strings.HasPrefix(s.Value, prefix.Value)}
 			},
 
-			// String.endsWith(str, suffix) -> bool
 			"endsWith": func(args ...object.Object) object.Object {
 				if len(args) != 2 {
 					return &object.Nil{}
@@ -146,7 +133,6 @@ func stringPackage() *object.Package {
 				return &object.Boolean{Value: strings.HasSuffix(s.Value, suffix.Value)}
 			},
 
-			// String.indexOf(str, substr) -> int (-1 if not found)
 			"indexOf": func(args ...object.Object) object.Object {
 				if len(args) != 2 {
 					return &object.Nil{}
@@ -159,20 +145,18 @@ func stringPackage() *object.Package {
 				return &object.Integer{Value: int64(strings.Index(s.Value, sub.Value))}
 			},
 
-			// String.repeat(str, n) -> string
 			"repeat": func(args ...object.Object) object.Object {
 				if len(args) != 2 {
 					return &object.Nil{}
 				}
 				s, ok1 := args[0].(*object.String)
 				n, ok2 := args[1].(*object.Integer)
-				if !ok1 || !ok2 || n.Value < 0 {
+				if !ok1 || !ok2 {
 					return &object.Nil{}
 				}
 				return &object.String{Value: strings.Repeat(s.Value, int(n.Value))}
 			},
 
-			// String.padLeft(str, n, char) -> string
 			"padLeft": func(args ...object.Object) object.Object {
 				if len(args) != 3 {
 					return &object.Nil{}
@@ -180,19 +164,20 @@ func stringPackage() *object.Package {
 				s, ok1 := args[0].(*object.String)
 				n, ok2 := args[1].(*object.Integer)
 				pad, ok3 := args[2].(*object.String)
-				if !ok1 || !ok2 || !ok3 || len(pad.Value) == 0 {
+				if !ok1 || !ok2 || !ok3 {
 					return &object.Nil{}
 				}
-				cur := utf8.RuneCountInString(s.Value)
-				needed := int(n.Value) - cur
-				if needed <= 0 {
-					return s
+				result := s.Value
+				padChar := pad.Value
+				if len(padChar) == 0 {
+					padChar = " "
 				}
-				fill := strings.Repeat(pad.Value, needed)
-				return &object.String{Value: fill + s.Value}
+				for len(result) < int(n.Value) {
+					result = padChar + result
+				}
+				return &object.String{Value: result}
 			},
 
-			// String.padRight(str, n, char) -> string
 			"padRight": func(args ...object.Object) object.Object {
 				if len(args) != 3 {
 					return &object.Nil{}
@@ -200,19 +185,20 @@ func stringPackage() *object.Package {
 				s, ok1 := args[0].(*object.String)
 				n, ok2 := args[1].(*object.Integer)
 				pad, ok3 := args[2].(*object.String)
-				if !ok1 || !ok2 || !ok3 || len(pad.Value) == 0 {
+				if !ok1 || !ok2 || !ok3 {
 					return &object.Nil{}
 				}
-				cur := utf8.RuneCountInString(s.Value)
-				needed := int(n.Value) - cur
-				if needed <= 0 {
-					return s
+				result := s.Value
+				padChar := pad.Value
+				if len(padChar) == 0 {
+					padChar = " "
 				}
-				fill := strings.Repeat(pad.Value, needed)
-				return &object.String{Value: s.Value + fill}
+				for len(result) < int(n.Value) {
+					result = result + padChar
+				}
+				return &object.String{Value: result}
 			},
 
-			// String.chars(str) -> array of single-char strings
 			"chars": func(args ...object.Object) object.Object {
 				if len(args) != 1 {
 					return &object.Nil{}
@@ -229,7 +215,6 @@ func stringPackage() *object.Package {
 				return &object.Array{Elements: elems}
 			},
 
-			// String.len(str) -> int
 			"len": func(args ...object.Object) object.Object {
 				if len(args) != 1 {
 					return &object.Nil{}
@@ -238,10 +223,9 @@ func stringPackage() *object.Package {
 				if !ok {
 					return &object.Nil{}
 				}
-				return &object.Integer{Value: int64(utf8.RuneCountInString(s.Value))}
+				return &object.Integer{Value: int64(len([]rune(s.Value)))}
 			},
 
-			// String.join(array, sep) -> string
 			"join": func(args ...object.Object) object.Object {
 				if len(args) != 2 {
 					return &object.Nil{}
@@ -258,7 +242,6 @@ func stringPackage() *object.Package {
 				return &object.String{Value: strings.Join(parts, sep.Value)}
 			},
 
-			// String.slice(str, start, end) -> string
 			"slice": func(args ...object.Object) object.Object {
 				if len(args) != 3 {
 					return &object.Nil{}
@@ -270,25 +253,236 @@ func stringPackage() *object.Package {
 					return &object.Nil{}
 				}
 				runes := []rune(s.Value)
-				n := int64(len(runes))
+				l := int64(len(runes))
 				st := start.Value
 				en := end.Value
 				if st < 0 {
-					st = n + st
-				}
-				if en < 0 {
-					en = n + en
-				}
-				if st < 0 {
 					st = 0
 				}
-				if en > n {
-					en = n
+				if en > l {
+					en = l
 				}
-				if st >= en {
+				if st > en {
 					return &object.String{Value: ""}
 				}
 				return &object.String{Value: string(runes[st:en])}
+			},
+
+			// ── New ───────────────────────────────────────────────────────────
+
+			// String.trimPrefix(s, prefix) -> string
+			"trimPrefix": func(args ...object.Object) object.Object {
+				if len(args) != 2 {
+					return &object.Nil{}
+				}
+				s, ok1 := args[0].(*object.String)
+				prefix, ok2 := args[1].(*object.String)
+				if !ok1 || !ok2 {
+					return &object.Nil{}
+				}
+				return &object.String{Value: strings.TrimPrefix(s.Value, prefix.Value)}
+			},
+
+			// String.trimSuffix(s, suffix) -> string
+			"trimSuffix": func(args ...object.Object) object.Object {
+				if len(args) != 2 {
+					return &object.Nil{}
+				}
+				s, ok1 := args[0].(*object.String)
+				suffix, ok2 := args[1].(*object.String)
+				if !ok1 || !ok2 {
+					return &object.Nil{}
+				}
+				return &object.String{Value: strings.TrimSuffix(s.Value, suffix.Value)}
+			},
+
+			// String.count(s, substr) -> int
+			"count": func(args ...object.Object) object.Object {
+				if len(args) != 2 {
+					return &object.Nil{}
+				}
+				s, ok1 := args[0].(*object.String)
+				sub, ok2 := args[1].(*object.String)
+				if !ok1 || !ok2 {
+					return &object.Nil{}
+				}
+				return &object.Integer{Value: int64(strings.Count(s.Value, sub.Value))}
+			},
+
+			// String.isDigit(s) -> bool
+			"isDigit": func(args ...object.Object) object.Object {
+				if len(args) != 1 {
+					return &object.Boolean{Value: false}
+				}
+				s, ok := args[0].(*object.String)
+				if !ok || len(s.Value) == 0 {
+					return &object.Boolean{Value: false}
+				}
+				for _, r := range s.Value {
+					if !unicode.IsDigit(r) {
+						return &object.Boolean{Value: false}
+					}
+				}
+				return &object.Boolean{Value: true}
+			},
+
+			// String.isAlpha(s) -> bool
+			"isAlpha": func(args ...object.Object) object.Object {
+				if len(args) != 1 {
+					return &object.Boolean{Value: false}
+				}
+				s, ok := args[0].(*object.String)
+				if !ok || len(s.Value) == 0 {
+					return &object.Boolean{Value: false}
+				}
+				for _, r := range s.Value {
+					if !unicode.IsLetter(r) {
+						return &object.Boolean{Value: false}
+					}
+				}
+				return &object.Boolean{Value: true}
+			},
+
+			// String.isAlphaNum(s) -> bool
+			"isAlphaNum": func(args ...object.Object) object.Object {
+				if len(args) != 1 {
+					return &object.Boolean{Value: false}
+				}
+				s, ok := args[0].(*object.String)
+				if !ok || len(s.Value) == 0 {
+					return &object.Boolean{Value: false}
+				}
+				for _, r := range s.Value {
+					if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+						return &object.Boolean{Value: false}
+					}
+				}
+				return &object.Boolean{Value: true}
+			},
+
+			// String.reverse(s) -> string
+			"reverse": func(args ...object.Object) object.Object {
+				if len(args) != 1 {
+					return &object.Nil{}
+				}
+				s, ok := args[0].(*object.String)
+				if !ok {
+					return &object.Nil{}
+				}
+				runes := []rune(s.Value)
+				for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
+					runes[i], runes[j] = runes[j], runes[i]
+				}
+				return &object.String{Value: string(runes)}
+			},
+
+			// String.lines(s) -> array  (split by \n)
+			"lines": func(args ...object.Object) object.Object {
+				if len(args) != 1 {
+					return &object.Nil{}
+				}
+				s, ok := args[0].(*object.String)
+				if !ok {
+					return &object.Nil{}
+				}
+				parts := strings.Split(s.Value, "\n")
+				elems := make([]object.Object, len(parts))
+				for i, p := range parts {
+					elems[i] = &object.String{Value: p}
+				}
+				return &object.Array{Elements: elems}
+			},
+
+			// String.toBytes(s) -> array of ints
+			"toBytes": func(args ...object.Object) object.Object {
+				if len(args) != 1 {
+					return &object.Nil{}
+				}
+				s, ok := args[0].(*object.String)
+				if !ok {
+					return &object.Nil{}
+				}
+				bytes := []byte(s.Value)
+				elems := make([]object.Object, len(bytes))
+				for i, b := range bytes {
+					elems[i] = &object.Integer{Value: int64(b)}
+				}
+				return &object.Array{Elements: elems}
+			},
+
+			// String.fromBytes(arr) -> string
+			"fromBytes": func(args ...object.Object) object.Object {
+				if len(args) != 1 {
+					return &object.Nil{}
+				}
+				arr, ok := args[0].(*object.Array)
+				if !ok {
+					return &object.Nil{}
+				}
+				bytes := make([]byte, len(arr.Elements))
+				for i, el := range arr.Elements {
+					n, ok := el.(*object.Integer)
+					if !ok {
+						return &object.Nil{}
+					}
+					bytes[i] = byte(n.Value)
+				}
+				return &object.String{Value: string(bytes)}
+			},
+
+			// String.format(template, ...args) -> string
+			// Simple %s %d %f substitution
+			"format": func(args ...object.Object) object.Object {
+				if len(args) < 1 {
+					return &object.Nil{}
+				}
+				tmpl, ok := args[0].(*object.String)
+				if !ok {
+					return &object.Nil{}
+				}
+				result := tmpl.Value
+				argIdx := 1
+				for strings.Contains(result, "%s") || strings.Contains(result, "%d") || strings.Contains(result, "%f") {
+					if argIdx >= len(args) {
+						break
+					}
+					val := args[argIdx].Inspect()
+					// Replace first occurrence
+					for _, placeholder := range []string{"%s", "%d", "%f"} {
+						idx := strings.Index(result, placeholder)
+						if idx != -1 {
+							result = result[:idx] + val + result[idx+len(placeholder):]
+							argIdx++
+							break
+						}
+					}
+				}
+				return &object.String{Value: result}
+			},
+
+			// String.lastIndexOf(s, substr) -> int
+			"lastIndexOf": func(args ...object.Object) object.Object {
+				if len(args) != 2 {
+					return &object.Nil{}
+				}
+				s, ok1 := args[0].(*object.String)
+				sub, ok2 := args[1].(*object.String)
+				if !ok1 || !ok2 {
+					return &object.Nil{}
+				}
+				return &object.Integer{Value: int64(strings.LastIndex(s.Value, sub.Value))}
+			},
+
+			// String.title(s) -> string  (Title Case)
+			"title": func(args ...object.Object) object.Object {
+				if len(args) != 1 {
+					return &object.Nil{}
+				}
+				s, ok := args[0].(*object.String)
+				if !ok {
+					return &object.Nil{}
+				}
+				return &object.String{Value: strings.Title(s.Value)} //nolint:staticcheck
 			},
 		},
 	}

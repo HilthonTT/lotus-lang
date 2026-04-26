@@ -1,0 +1,183 @@
+// new_features2.lotus — compound assign, spread, destructuring,
+//                        result type, pipe, file, regex, new math/string
+
+// ── Compound Assignment ───────────────────────────────────────────────────────
+mut x = 10
+x += 5   print("x += 5  → " + str(x))   // 15
+x -= 3   print("x -= 3  → " + str(x))   // 12
+x *= 2   print("x *= 2  → " + str(x))   // 24
+x /= 4   print("x /= 4  → " + str(x))   // 6
+x %= 4   print("x %= 4  → " + str(x))   // 2
+
+mut flags = 12
+flags &= 10   print("flags &= 10 → " + str(flags))  // 8
+flags |= 3    print("flags |= 3  → " + str(flags))  // 11
+flags <<= 1   print("flags <<= 1 → " + str(flags))  // 22
+
+// ── Spread / Variadic ─────────────────────────────────────────────────────────
+fn sum(...nums) {
+    return Array.reduce(nums, fn(a, b) { a + b }, 0)
+}
+print(str(sum(1, 2, 3, 4, 5)))   // 15
+print(str(sum(10, 20)))           // 30
+
+fn greet(greeting, ...names) {
+    for name in names {
+        print(greeting + ", " + name + "!")
+    }
+}
+greet("Hello", "Alice", "Bob", "Charlie")
+
+// Spread into array
+let a = [1, 2, 3]
+let b = [4, 5, 6]
+let c = [...a, ...b]
+print(str(c))   // [1, 2, 3, 4, 5, 6]
+
+// ── Array Destructuring ───────────────────────────────────────────────────────
+let [first, second, third] = [10, 20, 30]
+print("first=${first}  second=${second}  third=${third}")
+
+let [head, ...tail] = [1, 2, 3, 4, 5]
+print("head=" + str(head))   // 1
+print("tail=" + str(tail))   // [2, 3, 4, 5]
+
+// Swap using multi-assign (already works)
+mut p, q = 1, 2
+p, q = q, p
+print("swap: p=${p} q=${q}")
+
+// ── Map Destructuring ─────────────────────────────────────────────────────────
+let person = {"name": "Alice", "age": 30, "city": "Luxembourg"}
+let { name, age } = person
+print("name=${name}  age=${age}")
+
+// ── Result Type ───────────────────────────────────────────────────────────────
+fn divide(a, b) {
+    if b == 0 { return err("division by zero") }
+    return ok(a / b)
+}
+
+let r1 = divide(10, 2)
+let r2 = divide(10, 0)
+
+print("r1.ok=" + str(r1.ok))       // true
+print("r1.value=" + str(r1.value)) // 5
+print("r2.ok=" + str(r2.ok))       // false
+print("r2.error=" + str(r2.error)) // division by zero
+
+print(str(unwrapOr(r1, -1)))   // 5
+print(str(unwrapOr(r2, -1)))   // -1
+
+fn safeParseInt(s) {
+    let n = OS.parseInt(s)
+    if n == nil { return err("not a number: " + s) }
+    return ok(n)
+}
+
+let good = safeParseInt("42")
+let bad  = safeParseInt("abc")
+print("good: " + str(unwrap(good)))    // 42
+print("bad:  " + str(unwrapOr(bad, 0))) // 0
+
+// ── Pipe Operator ─────────────────────────────────────────────────────────────
+let result = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    |> Array.filter(fn(x) { x % 2 == 0 })
+    |> Array.map(fn(x) { x * x })
+    |> Array.reduce(fn(a, b) { a + b }, 0)
+print("pipe result: " + str(result))  // 4+16+36+64+100 = 220
+
+// ── For with index ────────────────────────────────────────────────────────────
+let fruits = ["apple", "banana", "cherry"]
+for i, fruit in fruits {
+    print("${i}: ${fruit}")
+}
+
+// ── New String functions ──────────────────────────────────────────────────────
+print(String.trimPrefix("Hello, World", "Hello, "))  // World
+print(String.trimSuffix("Hello, World", ", World"))   // Hello
+print(String.count("banana", "a"))                    // 3
+print(str(String.isDigit("12345")))                   // true
+print(str(String.isAlpha("hello")))                   // true
+print(str(String.reverse("lotus")))                   // sutol
+print(str(String.lines("a\nb\nc")))                   // [a, b, c]
+print(String.format("Hello %s, you are %d!", "Alice", 30))
+print(str(String.toBytes("ABC")))                     // [65, 66, 67]
+print(String.fromBytes([72, 105, 33]))                // Hi!
+
+// ── New Math functions ────────────────────────────────────────────────────────
+print(str(Math.log(Math.e())))          // 1
+print(str(Math.sin(0.0)))               // 0
+print(str(Math.cos(0.0)))               // 1
+print(str(Math.degrees(Math.pi())))     // 180
+print(str(Math.radians(180.0)))         // pi
+print(str(Math.clamp(15, 0, 10)))       // 10
+print(str(Math.gcd(48, 18)))            // 6
+print(str(Math.lcm(4, 6)))              // 12
+let rnd = Math.randomInt(1, 10)
+print("random 1-10: " + str(rnd))
+
+// ── File package ──────────────────────────────────────────────────────────────
+// Write a test file
+File.write("test.txt", "Hello from Lotus!\nLine 2\nLine 3")
+print("exists: " + str(File.exists("test.txt")))     // true
+print("size:   " + str(File.size("test.txt")))
+print("ext:    " + File.extension("test.txt"))        // .txt
+print("stem:   " + File.stem("test.txt"))             // test
+print("base:   " + File.basename("test.txt"))// test.txt
+print("dir:    " + File.dirname("test.txt")) // /path/to
+
+let content = File.read("test.txt")
+let lines = String.lines(content)
+print("lines: " + str(len(lines)))   // 3
+
+File.append("test.txt", "\nLine 4")
+let updated = File.read("test.txt")
+print(str(String.count(updated, "\n")))   // 3 newlines
+
+File.copy("test.txt", "test_copy.txt")
+print("copy exists: " + str(File.exists("test_copy.txt")))
+
+File.rename("test_copy.txt", "test_renamed.txt")
+print("renamed:     " + str(File.exists("test_renamed.txt")))
+
+File.delete("test.txt")
+File.delete("test_renamed.txt")
+print("deleted:     " + str(File.exists("test.txt")))  // false
+
+// Directory ops
+File.mkdir("testdir/subdir")
+print("isDir: " + str(File.isDir("testdir")))
+let entries = File.listDir("testdir")
+print("entries: " + str(entries))
+File.delete("testdir/subdir")
+File.delete("testdir")
+
+print("cwd: " + File.cwd())
+
+// ── Regex package ─────────────────────────────────────────────────────────────
+print(str(Regex.test("\\d+", "hello123")))              // true
+print(str(Regex.find("\\d+", "hello123world456")))      // 123
+print(str(Regex.findAll("\\d+", "a1 b22 c333")))        // [1, 22, 333]
+print(Regex.replace("\\s+", "hello   world", " "))      // hello world
+print(str(Regex.split(",\\s*", "a, b, c, d")))          // [a, b, c, d]
+print(str(Regex.count("[aeiou]", "hello world")))        // 3
+
+// Groups
+let groups = Regex.groups("(\\w+)@(\\w+)\\.(\\w+)", "user@example.com")
+print("user: "   + str(groups[0]))  // user
+print("domain: " + str(groups[1]))  // example
+print("tld: "    + str(groups[2]))  // com
+
+// Pre-compiled regex (more efficient for reuse)
+let emailRe = Regex.compile("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}")
+let emails = ["alice@example.com", "not-an-email", "bob@lotus.dev"]
+for email in emails {
+    if Regex.test(emailRe, email) {
+        print("valid: " + email)
+    } else {
+        print("invalid: " + email)
+    }
+}
+
+print(Regex.escape("hello.world+foo"))  // hello\\.world\\+foo

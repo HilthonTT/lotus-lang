@@ -619,6 +619,71 @@ func (vm *VM) Run() error {
 			// future use (e.g. runtime interface checks).
 			vm.currentFrame().ip += 2
 
+		case code.OpArraySliceFrom:
+			start := vm.pop()
+			arr := vm.pop()
+			array, ok1 := arr.(*object.Array)
+			idx, ok2 := start.(*object.Integer)
+			if !ok1 || !ok2 {
+				return fmt.Errorf("OpArraySliceFrom: expected array and int, got %s and %s", arr.Type(), start.Type())
+			}
+			from := min(max(int(idx.Value), 0), len(array.Elements))
+			sliced := make([]object.Object, len(array.Elements)-from)
+			copy(sliced, array.Elements[from:])
+			if err := vm.push(&object.Array{Elements: sliced}); err != nil {
+				return err
+			}
+
+		case code.OpSpread:
+			val := vm.pop()
+			arr, ok := val.(*object.Array)
+			if !ok {
+				// Non-array: wrap as single-element spread
+				arr = &object.Array{Elements: []object.Object{val}}
+			}
+			if err := vm.push(&object.SpreadValue{Elements: arr.Elements}); err != nil {
+				return err
+			}
+
+		case code.OpSpreadCall:
+			numArgs := int(code.ReadUint8(ins[ip+1:]))
+			vm.currentFrame().ip++
+
+			// Collect raw args from stack (may contain SpreadValues)
+			rawArgs := make([]object.Object, numArgs)
+			for i := numArgs - 1; i >= 0; i-- {
+				rawArgs[i] = vm.pop()
+			}
+
+			// Flatten any SpreadValues
+			var flatArgs []object.Object
+			for _, arg := range rawArgs {
+				if spread, ok := arg.(*object.SpreadValue); ok {
+					flatArgs = append(flatArgs, spread.Elements...)
+				} else {
+					flatArgs = append(flatArgs, arg)
+				}
+			}
+
+			// Get callee (now at top of stack)
+			callee := vm.pop()
+
+			// Push callee and flat args back
+			if err := vm.push(callee); err != nil {
+				return err
+			}
+			for _, arg := range flatArgs {
+				if err := vm.push(arg); err != nil {
+					return err
+				}
+			}
+
+			if err := vm.executeCall(len(flatArgs)); err != nil {
+				if !vm.redirectToCatch(err) {
+					return err
+				}
+			}
+
 		default:
 			return fmt.Errorf("unknown opcode: %d", op)
 		}
@@ -718,6 +783,18 @@ func (vm *VM) executeGetField(obj object.Object, name string) error {
 	case *object.EnumVariant:
 		// Access data field on a data-carrying variant: shape.radius
 		return vm.push(o.GetField(name))
+
+	case *object.Result:
+		switch name {
+		case "ok":
+			return vm.push(&object.Boolean{Value: o.Ok})
+		case "value":
+			return vm.push(o.Value)
+		case "error":
+			return vm.push(&object.String{Value: o.ErrMsg})
+		default:
+			return fmt.Errorf("Result has no field '%s'", name)
+		}
 
 	default:
 		return fmt.Errorf("field access on non-instance (%s)", obj.Type())
@@ -1165,9 +1242,13 @@ func (vm *VM) executeIndexSet(obj, index, value object.Object) error {
 // --- Data structure builders ---
 
 func (vm *VM) buildArray(startIndex, endIndex int) object.Object {
-	elements := make([]object.Object, endIndex-startIndex)
+	var elements []object.Object
 	for i := startIndex; i < endIndex; i++ {
-		elements[i-startIndex] = vm.stack[i]
+		if spread, ok := vm.stack[i].(*object.SpreadValue); ok {
+			elements = append(elements, spread.Elements...)
+		} else {
+			elements = append(elements, vm.stack[i])
+		}
 	}
 	return &object.Array{Elements: elements}
 }
@@ -1207,9 +1288,31 @@ func (vm *VM) executeCall(numArgs int) error {
 }
 
 func (vm *VM) callClosure(cl *object.Closure, numArgs int) error {
-	if numArgs != cl.Fn.NumParams {
-		return fmt.Errorf("%s: expected %d arguments, got %d",
-			cl.Fn.Name, cl.Fn.NumParams, numArgs)
+	fn := cl.Fn
+
+	if fn.IsVariadic {
+		// Fixed params = fn.NumParams - 1 (last param is the rest array)
+		fixedCount := fn.NumParams - 1
+		if numArgs < fixedCount {
+			return fmt.Errorf("%s: expected at least %d arguments, got %d",
+				fn.Name, fixedCount, numArgs)
+		}
+		// Pack extra args into a rest array
+		restCount := numArgs - fixedCount
+		restElems := make([]object.Object, restCount)
+		for i := range restCount {
+			restElems[i] = vm.stack[vm.sp-restCount+i]
+		}
+		vm.sp -= restCount
+		if err := vm.push(&object.Array{Elements: restElems}); err != nil {
+			return err
+		}
+		numArgs = fn.NumParams // adjusted to match exactly
+	} else {
+		if numArgs != fn.NumParams {
+			return fmt.Errorf("%s: expected %d arguments, got %d",
+				fn.Name, fn.NumParams, numArgs)
+		}
 	}
 
 	if vm.framesIndex < vm.maxFramesUsed {
@@ -1219,14 +1322,14 @@ func (vm *VM) callClosure(cl *object.Closure, numArgs int) error {
 		f.closure = cl
 		f.initInstance = nil
 		f.isMethod = false
-		f.constants = cl.Constants // propagate
+		f.constants = cl.Constants
 		f.deferred = nil
 		vm.framesIndex++
-		vm.sp = vm.sp - numArgs + cl.Fn.NumLocals
+		vm.sp = vm.sp - numArgs + fn.NumLocals
 	} else {
 		frame := NewFrame(cl, vm.sp-numArgs)
 		vm.pushFrame(frame)
-		vm.sp = frame.basePointer + cl.Fn.NumLocals
+		vm.sp = frame.basePointer + fn.NumLocals
 	}
 	return nil
 }

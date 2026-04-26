@@ -82,6 +82,10 @@ func (l *Lexer) NextToken() token.Token {
 			l.readChar()
 			tok.Type = token.PLUSPLUS
 			tok.Literal = string(ch) + string(l.ch)
+		} else if l.peekChar() == '=' {
+			l.readChar()
+			tok.Type = token.PLUS_ASSIGN
+			tok.Literal = "+="
 		} else {
 			tok.Type = token.PLUS
 			tok.Literal = "+"
@@ -97,11 +101,14 @@ func (l *Lexer) NextToken() token.Token {
 			l.readChar()
 			tok.Type = token.ARROW
 			tok.Literal = "->"
+		} else if l.peekChar() == '=' {
+			l.readChar()
+			tok.Type = token.MINUS_ASSIGN
+			tok.Literal = "-="
 		} else {
 			tok.Type = token.MINUS
 			tok.Literal = "-"
 		}
-
 	case '!':
 		if l.peekChar() == '=' {
 			tok.Type = token.NOTEQ
@@ -113,22 +120,46 @@ func (l *Lexer) NextToken() token.Token {
 		}
 
 	case '*':
-		tok.Type = token.ASTERISK
-		tok.Literal = "*"
+		if l.peekChar() == '=' {
+			l.readChar()
+			tok.Type = token.MUL_ASSIGN
+			tok.Literal = "*="
+		} else {
+			tok.Type = token.ASTERISK
+			tok.Literal = "*"
+		}
 
 	case '/':
-		tok.Type = token.SLASH
-		tok.Literal = "/"
+		if l.peekChar() == '=' {
+			l.readChar()
+			tok.Type = token.DIV_ASSIGN
+			tok.Literal = "/="
+		} else {
+			tok.Type = token.SLASH
+			tok.Literal = "/"
+		}
 
 	case '%':
-		tok.Type = token.MODULO
-		tok.Literal = "%"
+		if l.peekChar() == '=' {
+			l.readChar()
+			tok.Type = token.MOD_ASSIGN
+			tok.Literal = "%="
+		} else {
+			tok.Type = token.MODULO
+			tok.Literal = "%"
+		}
 
 	case '<':
 		if l.peekChar() == '<' {
 			l.readChar()
-			tok.Type = token.LSHIFT
-			tok.Literal = "<<"
+			if l.peekChar() == '=' {
+				l.readChar()
+				tok.Type = token.LSHIFT_ASSIGN
+				tok.Literal = "<<="
+			} else {
+				tok.Type = token.LSHIFT
+				tok.Literal = "<<"
+			}
 		} else if l.peekChar() == '=' {
 			l.readChar()
 			tok.Type = token.LTEQ
@@ -141,8 +172,14 @@ func (l *Lexer) NextToken() token.Token {
 	case '>':
 		if l.peekChar() == '>' {
 			l.readChar()
-			tok.Type = token.RSHIFT
-			tok.Literal = ">>"
+			if l.peekChar() == '=' {
+				l.readChar()
+				tok.Type = token.RSHIFT_ASSIGN
+				tok.Literal = ">>="
+			} else {
+				tok.Type = token.RSHIFT
+				tok.Literal = ">>"
+			}
 		} else if l.peekChar() == '=' {
 			l.readChar()
 			tok.Type = token.GTEQ
@@ -157,6 +194,10 @@ func (l *Lexer) NextToken() token.Token {
 			l.readChar()
 			tok.Type = token.AND
 			tok.Literal = "&&"
+		} else if l.peekChar() == '=' {
+			l.readChar()
+			tok.Type = token.AND_ASSIGN
+			tok.Literal = "&="
 		} else {
 			tok.Type = token.BITAND
 			tok.Literal = "&"
@@ -167,14 +208,28 @@ func (l *Lexer) NextToken() token.Token {
 			l.readChar()
 			tok.Type = token.OR
 			tok.Literal = "||"
+		} else if l.peekChar() == '>' {
+			l.readChar()
+			tok.Type = token.PIPE
+			tok.Literal = "|>"
+		} else if l.peekChar() == '=' {
+			l.readChar()
+			tok.Type = token.OR_ASSIGN
+			tok.Literal = "|="
 		} else {
 			tok.Type = token.BITOR
 			tok.Literal = "|"
 		}
 
 	case '^':
-		tok.Type = token.BITXOR
-		tok.Literal = "^"
+		if l.peekChar() == '=' {
+			l.readChar()
+			tok.Type = token.XOR_ASSIGN
+			tok.Literal = "^="
+		} else {
+			tok.Type = token.BITXOR
+			tok.Literal = "^"
+		}
 
 	case '~':
 		tok.Type = token.TILDE
@@ -207,8 +262,15 @@ func (l *Lexer) NextToken() token.Token {
 		tok.Literal = ":"
 
 	case '.':
-		tok.Type = token.DOT
-		tok.Literal = "."
+		if l.peekChar() == '.' && l.characters[l.readPosition+1] == '.' {
+			l.readChar()
+			l.readChar()
+			tok.Type = token.ELLIPSIS
+			tok.Literal = "..."
+		} else {
+			tok.Type = token.DOT
+			tok.Literal = "."
+		}
 
 	case '(':
 		tok.Type = token.LPAREN

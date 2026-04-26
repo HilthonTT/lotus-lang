@@ -13,6 +13,8 @@ var BuiltinPackageOrder = []string{
 	"String",
 	"Time",
 	"Json",
+	"File",
+	"Regex",
 }
 
 // Add new packages here — they are automatically injected as globals.
@@ -25,4 +27,6 @@ var BuiltinPackages = map[string]*object.Package{
 	"String":  stringPackage(),
 	"Time":    timePackage(),
 	"Json":    jsonPackage(),
+	"File":    filePackage(),
+	"Regex":   regexPackage(),
 }
