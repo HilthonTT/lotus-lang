@@ -1,0 +1,22 @@
+// Arrays
+if "banana" in ["apple", "banana", "cherry"] {
+    print("found it!")
+}
+
+// Maps (checks keys)
+let config = {"debug": true, "port": 8080}
+if "debug" in config {
+    print("debug mode on")
+}
+
+// Strings (substring check)
+if "lotus" in "hello lotus world" {
+    print("contains lotus")
+}
+
+let roles = ["moderator"]
+
+// Negation with !
+if !("admin" in roles) {
+    throw "unauthorized"
+}

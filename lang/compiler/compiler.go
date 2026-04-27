@@ -476,6 +476,8 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.emit(code.OpLShift)
 		case ">>":
 			c.emit(code.OpRShift)
+		case "in":
+			c.emit(code.OpIn)
 		default:
 			return fmt.Errorf("unknown operator: %s", node.Operator)
 		}

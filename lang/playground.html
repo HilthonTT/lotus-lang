@@ -1,123 +1,435 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="h-full">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Lotus Playground</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link
       href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Syne:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./style.css" />
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              bg: "#0d0f14",
+              surface: "#13161e",
+              surface2: "#1a1e29",
+              border: "#252a38",
+              border2: "#2e3547",
+              accent: "#e8c97a",
+              accent2: "#c8a94a",
+              lotus: "#e8847a",
+              muted: "#4a5168",
+              text1: "#d4d8e8",
+              text2: "#8890a8",
+            },
+            fontFamily: {
+              mono: ['"DM Mono"', "monospace"],
+              sans: ["Syne", "sans-serif"],
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      /* ── Editor overlay: highlight + textarea must share identical metrics ── */
+      .editor-inner {
+        position: relative;
+        min-height: 100%;
+      }
 
-    <body>
-      <header>
-        <div class="logo">
-          <span class="logo-icon">🪷</span>
-          Lotus
-        </div>
-        <div class="divider"></div>
-        <span class="examples-label">Examples</span>
-        <div class="examples">
-          <button class="example-btn" data-example="hello">Hello World</button>
-          <button class="example-btn" data-example="fibonacci">
-            Fibonacci
-          </button>
-          <button class="example-btn" data-example="closures">Closures</button>
-          <button class="example-btn" data-example="classes">Classes</button>
-          <button class="example-btn" data-example="sort">Quicksort</button>
-          <button class="example-btn" data-example="map">Maps</button>
-          <button class="example-btn" data-example="match">Match/Enum</button>
-          <button class="example-btn" data-example="strings">Strings</button>
-          <button class="example-btn" data-example="arrayFns">Arrays</button>
-          <button class="example-btn" data-example="timeFns">Time</button>
-          <button class="example-btn" data-example="jsonFns">Json</button>
-          <button class="example-btn" data-example="errorHandling">
-            Defer/Try/Interface
-          </button>
-        </div>
-        <button class="run-btn" id="runBtn">
-          <svg width="13" height="13" viewBox="0 0 12 12" fill="currentColor">
-            <polygon points="2,1 11,6 2,11" />
-          </svg>
-          Run
+      .highlight-layer,
+      .code-input {
+        font-family: "DM Mono", monospace;
+        font-size: 13px;
+        line-height: 1.7;
+        padding: 16px;
+        letter-spacing: 0;
+        tab-size: 4;
+        white-space: pre;
+        word-break: normal;
+      }
+
+      .highlight-layer {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        overflow: visible;
+        min-height: 100%;
+        z-index: 0;
+        color: #d4d8e8;
+      }
+
+      .code-input {
+        position: relative;
+        display: block;
+        width: 100%;
+        min-height: 100%;
+        min-width: 100%;
+        background: transparent;
+        border: none;
+        outline: none;
+        resize: none;
+        color: transparent;
+        caret-color: #e8c97a;
+        overflow: hidden;
+        z-index: 1;
+      }
+
+      /* ── Syntax colours ── */
+      .tok-kw {
+        color: #b07ae0;
+        font-weight: 500;
+      }
+      .tok-kw-decl {
+        color: #9b7ae0;
+        font-weight: 500;
+      }
+      .tok-fn {
+        color: #7ab3e0;
+      }
+      .tok-class {
+        color: #e8c97a;
+        font-weight: 600;
+      }
+      .tok-pkg {
+        color: #e8c97a;
+      }
+      .tok-str {
+        color: #7ecf9a;
+      }
+      .tok-num {
+        color: #e0a07a;
+      }
+      .tok-bool {
+        color: #e8847a;
+      }
+      .tok-comment {
+        color: #4a5168;
+        font-style: italic;
+      }
+      .tok-op {
+        color: #c4cde0;
+      }
+      .tok-self {
+        color: #e8847a;
+        font-style: italic;
+      }
+      .tok-builtin {
+        color: #7ac8e0;
+      }
+      .tok-type {
+        color: #a8d8a8;
+        font-style: italic;
+      }
+
+      /* ── Scrollbar ── */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #2e3547;
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #4a5168;
+      }
+
+      ::selection {
+        background: rgba(232, 201, 122, 0.2);
+      }
+
+      /* ── Animations ── */
+      @keyframes fadein {
+        to {
+          opacity: 1;
+        }
+      }
+      @keyframes pulse {
+        50% {
+          opacity: 0.4;
+        }
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @keyframes dash {
+        to {
+          stroke-dashoffset: 0;
+        }
+      }
+
+      .output-line {
+        opacity: 0;
+        animation: fadein 0.12s forwards;
+      }
+      .status-run {
+        animation: pulse 0.8s infinite;
+      }
+      .loading-spin svg {
+        animation: spin 0.8s linear infinite;
+      }
+
+      /* Line numbers clip */
+      .line-numbers-wrap {
+        overflow: hidden;
+        height: 100%;
+        flex-shrink: 0;
+        display: flex;
+        flex-direction: column;
+      }
+      #lineNumbers {
+        padding: 16px 12px 16px 8px;
+        font-family: "DM Mono", monospace;
+        font-size: 13px;
+        line-height: 1.7;
+        color: #4a5168;
+        user-select: none;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        flex: 1;
+      }
+      #lineNumbers div {
+        height: calc(13px * 1.7);
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+      }
+    </style>
+  </head>
+
+  <body class="h-full bg-bg text-text1 font-sans overflow-hidden flex flex-col">
+    <!-- ── Header ── -->
+    <header
+      class="flex items-center gap-4 px-5 h-[52px] bg-surface border-b border-border flex-shrink-0"
+    >
+      <!-- Logo -->
+      <div
+        class="flex items-center gap-2 text-accent font-bold text-[15px] tracking-widest uppercase"
+      >
+        <span class="text-[20px] leading-none">🪷</span>
+        Lotus
+      </div>
+
+      <div class="w-px h-5 bg-border2"></div>
+
+      <span
+        class="text-[11px] font-semibold tracking-[0.08em] uppercase text-muted"
+        >Examples</span
+      >
+
+      <!-- Example buttons -->
+      <div class="flex gap-1.5 flex-1 overflow-x-auto">
+        <button
+          class="example-btn px-2.5 py-1 bg-surface2 border border-border2 rounded text-[11px] font-mono text-text2 cursor-pointer transition-all hover:border-accent hover:text-accent hover:bg-accent/5 whitespace-nowrap"
+          data-example="hello"
+        >
+          Hello World
         </button>
-      </header>
-      <div class="workspace">
-        <div class="editor-pane">
-          <div class="pane-header">
-            <span class="dot"></span>
-            <span class="pane-label">Editor</span>
-            <span class="divider"></span>
-            <span class="file-name">main.lotus</span>
-          </div>
-          <div class="editor-wrap">
-            <div class="line-numbers-clip">
-              <div class="line-numbers" id="lineNumbers">1</div>
-            </div>
-            <div class="editor-scroll" id="editorScroll">
-              <div class="editor-inner" id="editorInner">
-                <div
-                  class="highlight-layer"
-                  id="highlightLayer"
-                  aria-hidden="true"
-                ></div>
-                <textarea
-                  class="code-input"
-                  id="codeInput"
-                  spellcheck="false"
-                  autocomplete="off"
-                  autocorrect="off"
-                  autocapitalize="off"
-                  placeholder="// Write Lotus code here..."
-                ></textarea>
-              </div>
-            </div>
-          </div>
+        <button
+          class="example-btn px-2.5 py-1 bg-surface2 border border-border2 rounded text-[11px] font-mono text-text2 cursor-pointer transition-all hover:border-accent hover:text-accent hover:bg-accent/5 whitespace-nowrap"
+          data-example="fibonacci"
+        >
+          Fibonacci
+        </button>
+        <button
+          class="example-btn px-2.5 py-1 bg-surface2 border border-border2 rounded text-[11px] font-mono text-text2 cursor-pointer transition-all hover:border-accent hover:text-accent hover:bg-accent/5 whitespace-nowrap"
+          data-example="closures"
+        >
+          Closures
+        </button>
+        <button
+          class="example-btn px-2.5 py-1 bg-surface2 border border-border2 rounded text-[11px] font-mono text-text2 cursor-pointer transition-all hover:border-accent hover:text-accent hover:bg-accent/5 whitespace-nowrap"
+          data-example="classes"
+        >
+          Classes
+        </button>
+        <button
+          class="example-btn px-2.5 py-1 bg-surface2 border border-border2 rounded text-[11px] font-mono text-text2 cursor-pointer transition-all hover:border-accent hover:text-accent hover:bg-accent/5 whitespace-nowrap"
+          data-example="sort"
+        >
+          Quicksort
+        </button>
+        <button
+          class="example-btn px-2.5 py-1 bg-surface2 border border-border2 rounded text-[11px] font-mono text-text2 cursor-pointer transition-all hover:border-accent hover:text-accent hover:bg-accent/5 whitespace-nowrap"
+          data-example="map"
+        >
+          Maps
+        </button>
+        <button
+          class="example-btn px-2.5 py-1 bg-surface2 border border-border2 rounded text-[11px] font-mono text-text2 cursor-pointer transition-all hover:border-accent hover:text-accent hover:bg-accent/5 whitespace-nowrap"
+          data-example="match"
+        >
+          Match/Enum
+        </button>
+        <button
+          class="example-btn px-2.5 py-1 bg-surface2 border border-border2 rounded text-[11px] font-mono text-text2 cursor-pointer transition-all hover:border-accent hover:text-accent hover:bg-accent/5 whitespace-nowrap"
+          data-example="strings"
+        >
+          Strings
+        </button>
+        <button
+          class="example-btn px-2.5 py-1 bg-surface2 border border-border2 rounded text-[11px] font-mono text-text2 cursor-pointer transition-all hover:border-accent hover:text-accent hover:bg-accent/5 whitespace-nowrap"
+          data-example="arrayFns"
+        >
+          Arrays
+        </button>
+        <button
+          class="example-btn px-2.5 py-1 bg-surface2 border border-border2 rounded text-[11px] font-mono text-text2 cursor-pointer transition-all hover:border-accent hover:text-accent hover:bg-accent/5 whitespace-nowrap"
+          data-example="timeFns"
+        >
+          Time
+        </button>
+        <button
+          class="example-btn px-2.5 py-1 bg-surface2 border border-border2 rounded text-[11px] font-mono text-text2 cursor-pointer transition-all hover:border-accent hover:text-accent hover:bg-accent/5 whitespace-nowrap"
+          data-example="jsonFns"
+        >
+          Json
+        </button>
+        <button
+          class="example-btn px-2.5 py-1 bg-surface2 border border-border2 rounded text-[11px] font-mono text-text2 cursor-pointer transition-all hover:border-accent hover:text-accent hover:bg-accent/5 whitespace-nowrap"
+          data-example="errorHandling"
+        >
+          Defer/Try/Interface
+        </button>
+      </div>
+
+      <!-- Run button -->
+      <button
+        id="runBtn"
+        class="flex items-center gap-1.5 px-[18px] py-[7px] bg-accent border-0 rounded-md font-sans text-[13px] font-bold tracking-[0.05em] uppercase text-bg cursor-pointer transition-all hover:bg-accent2 hover:-translate-y-px active:translate-y-0 flex-shrink-0"
+      >
+        <svg width="13" height="13" viewBox="0 0 12 12" fill="currentColor">
+          <polygon points="2,1 11,6 2,11" />
+        </svg>
+        Run
+      </button>
+    </header>
+
+    <!-- ── Workspace ── -->
+    <div class="flex flex-1 min-h-0">
+      <!-- ── Editor pane ── -->
+      <div class="flex-1 flex flex-col min-w-0 border-r border-border">
+        <!-- Pane header -->
+        <div
+          class="flex items-center gap-2 px-4 h-9 bg-surface border-b border-border flex-shrink-0"
+        >
+          <span class="w-1.5 h-1.5 rounded-full bg-accent opacity-60"></span>
+          <span
+            class="text-[10px] font-bold tracking-[0.12em] uppercase text-muted"
+            >Editor</span
+          >
+          <div class="w-px h-4 bg-border2 mx-1"></div>
+          <span class="text-[12px] font-mono text-text2">main.lotus</span>
         </div>
 
-        <div class="output-pane">
-          <div class="output-header">
-            <div style="display: flex; align-items: center; gap: 8px">
-              <span class="dot" id="statusDot"></span>
-              <span class="pane-label">Output</span>
-            </div>
-            <div class="output-actions">
-              <button class="icon-btn" id="clearBtn" title="Clear output">
-                <svg
-                  width="13"
-                  height="13"
-                  viewBox="0 0 16 16"
-                  fill="currentColor"
-                >
-                  <path
-                    d="M2 4h12v1.5H2zM5 4V2.5a.5.5 0 01.5-.5h5a.5.5 0 01.5.5V4M6.5 7v5M9.5 7v5M3 5.5l1 9a.5.5 0 00.5.5h7a.5.5 0 00.5-.5l1-9"
-                  />
-                </svg>
-              </button>
-            </div>
+        <!-- Editor area -->
+        <div class="flex flex-1 min-h-0 overflow-hidden">
+          <!-- Line numbers -->
+          <div
+            class="line-numbers-wrap bg-surface border-r border-border w-[52px]"
+          >
+            <div id="lineNumbers"><div>1</div></div>
           </div>
-          <div class="output-body" id="outputBody">
-            <div class="output-idle" id="outputIdle">
-              <span class="big-icon">🪷</span>
-              <p>Press Run to execute your code</p>
-            </div>
-          </div>
-          <div class="statusbar">
-            <div class="status-left">
-              <span class="status-dot" id="statusIndicator"></span>
-              <span id="statusText">ready</span>
-            </div>
-            <div class="status-right">
-              <span id="lineCol">Ln 1, Col 1</span>
-              <span id="execTime"></span>
+
+          <!-- Scroll area -->
+          <div id="editorScroll" class="flex-1 overflow-auto relative bg-bg">
+            <div id="editorInner" class="editor-inner">
+              <div
+                id="highlightLayer"
+                class="highlight-layer"
+                aria-hidden="true"
+              ></div>
+              <textarea
+                id="codeInput"
+                class="code-input"
+                spellcheck="false"
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
+                placeholder="// Write Lotus code here..."
+              ></textarea>
             </div>
           </div>
         </div>
       </div>
 
-      <script src="./playground.js"></script>
-    </body>
-  </head>
+      <!-- ── Output pane ── -->
+      <div class="w-[40%] min-w-[280px] flex flex-col">
+        <!-- Output header -->
+        <div
+          class="flex items-center justify-between px-4 h-9 bg-surface border-b border-border flex-shrink-0"
+        >
+          <div class="flex items-center gap-2">
+            <span
+              id="statusDot"
+              class="w-1.5 h-1.5 rounded-full bg-muted transition-colors duration-300"
+            ></span>
+            <span
+              class="text-[10px] font-bold tracking-[0.12em] uppercase text-muted"
+              >Output</span
+            >
+          </div>
+          <button
+            id="clearBtn"
+            title="Clear output"
+            class="flex items-center justify-center w-6 h-6 bg-transparent border-0 rounded text-muted cursor-pointer transition-all hover:bg-surface2 hover:text-text1"
+          >
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
+              <path
+                d="M2 4h12v1.5H2zM5 4V2.5a.5.5 0 01.5-.5h5a.5.5 0 01.5.5V4M6.5 7v5M9.5 7v5M3 5.5l1 9a.5.5 0 00.5.5h7a.5.5 0 00.5-.5l1-9"
+              />
+            </svg>
+          </button>
+        </div>
+
+        <!-- Output body -->
+        <div
+          id="outputBody"
+          class="flex-1 overflow-auto p-4 font-mono text-[13px] leading-[1.7]"
+        >
+          <div
+            id="outputIdle"
+            class="flex flex-col items-center justify-center h-full gap-3 text-muted"
+          >
+            <span class="text-[40px] opacity-30">🪷</span>
+            <p class="text-[12px] tracking-[0.05em]">
+              Press Run to execute your code
+            </p>
+          </div>
+        </div>
+
+        <!-- Status bar -->
+        <div
+          class="flex items-center justify-between px-4 h-[26px] bg-surface border-t border-border font-mono text-[11px] text-muted flex-shrink-0"
+        >
+          <div class="flex items-center gap-4">
+            <span
+              id="statusIndicator"
+              class="w-1.5 h-1.5 rounded-full bg-muted transition-colors duration-300"
+            ></span>
+            <span id="statusText">ready</span>
+          </div>
+          <div class="flex items-center gap-4">
+            <span id="lineCol">Ln 1, Col 1</span>
+            <span id="execTime"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="./playground.js"></script>
+  </body>
 </html>

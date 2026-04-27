@@ -48,6 +48,7 @@ var precedences = map[token.TokenType]int{
 	token.BITAND:       BITWISE_AND,
 	token.EQ:           EQUALS,
 	token.NOTEQ:        EQUALS,
+	token.IN:           EQUALS,
 	token.LT:           LESSGREATER,
 	token.GT:           LESSGREATER,
 	token.LTEQ:         LESSGREATER,
@@ -150,6 +151,7 @@ func New(l *lexer.Lexer) *Parser {
 		token.RSHIFT:       p.parseInfixExpression,
 		token.OPTDOT:       p.parseOptionalDotExpression,
 		token.PIPE:         p.parsePipeExpression,
+		token.IN:           p.parseInfixExpression,
 	}
 
 	p.postfixParseFns = map[token.TokenType]postfixParseFunc{

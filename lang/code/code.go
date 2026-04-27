@@ -82,6 +82,7 @@ const (
 	OpNotEqual
 	OpGreater
 	OpGreaterEq
+	OpIn // pops [left, right] → pushes bool: left in right
 
 	// Logic
 	OpNot
@@ -240,6 +241,7 @@ var definitions = map[Opcode]*Definition{
 	OpSpread:          {"OpSpread", []int{}},
 	OpSpreadCall:      {"OpSpreadCall", []int{1}},
 	OpArraySliceFrom:  {"OpArraySliceFrom", []int{}},
+	OpIn:              {"OpIn", []int{}},
 }
 
 // Lookup finds the Definition for a given opcode byte.

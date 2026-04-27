@@ -158,7 +158,12 @@ func disassembleFile(filePath string, annotated bool) {
 }
 
 func mustParse(filePath string) *ast.Program {
+	if filepath.Ext(filePath) != ".lotus" {
+		fmt.Fprintf(os.Stderr, "error: %q is not a .lotus file\n", filePath)
+		os.Exit(1)
+	}
 	fmt.Println(filePath)
+
 	contents, err := os.ReadFile(filePath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: could not read file %q: %s\n", filePath, err)

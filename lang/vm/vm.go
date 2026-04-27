@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/hilthontt/lotus/code"
@@ -244,6 +245,38 @@ func (vm *VM) Run() error {
 			if err := vm.executeComparison(op); err != nil {
 				return err
 			}
+
+		case code.OpIn:
+			right := vm.pop()
+			left := vm.pop()
+			switch r := right.(type) {
+			case *object.Array:
+				for _, el := range r.Elements {
+					if left.Inspect() == el.Inspect() {
+						vm.push(True)
+						goto done
+					}
+				}
+				vm.push(False)
+			case *object.Hash:
+				if h, ok := left.(object.Hashable); ok {
+					_, found := r.Pairs[h.HashKey()]
+					vm.push(nativeBoolToBooleanObj(found))
+				} else {
+					vm.push(False)
+				}
+			case *object.String:
+				ls, ok := left.(*object.String)
+				if ok {
+					vm.push(nativeBoolToBooleanObj(strings.Contains(r.Value, ls.Value)))
+				} else {
+					vm.push(False)
+				}
+			default:
+				vm.push(False)
+			}
+		done:
+			break
 
 		// --- Logical (short-circuit values handled by compiler jumps) ---
 
