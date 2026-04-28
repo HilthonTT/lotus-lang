@@ -16,6 +16,12 @@ type Lexer struct {
 	prevToken    token.Token
 	line         int
 	col          int
+	Comments     []CommentToken
+}
+
+type CommentToken struct {
+	Line int
+	Text string
 }
 
 func New(input string) *Lexer {
@@ -327,9 +333,19 @@ func (l *Lexer) skipWhitespaceAndComments() {
 	for {
 		l.skipWhitespace()
 		if l.ch == '/' && l.peekChar() == '/' {
+			commentLine := l.line
+			var buf []rune
+
 			for l.ch != '\n' && l.ch != 0 {
+				buf = append(buf, l.ch)
 				l.readChar()
 			}
+
+			l.Comments = append(l.Comments, CommentToken{
+				Line: commentLine,
+				Text: string(buf),
+			})
+
 			continue
 		}
 		break

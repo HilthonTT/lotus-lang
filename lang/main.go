@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +14,7 @@ import (
 	"github.com/hilthontt/lotus/compiler"
 	"github.com/hilthontt/lotus/evaluator"
 	"github.com/hilthontt/lotus/executable"
+	"github.com/hilthontt/lotus/formatter"
 	"github.com/hilthontt/lotus/lexer"
 	"github.com/hilthontt/lotus/object"
 	"github.com/hilthontt/lotus/parser"
@@ -31,6 +34,8 @@ func main() {
 	playgroundAddr := flag.String("playground-addr", ":3000", "Playground server address")
 	buildOut := flag.String("build", "", "Output path for compiled executable")
 	compile := flag.Bool("compile", false, "Compile .lotus to .lotusbc without running")
+	fmtFlag := flag.Bool("fmt", false, "Format .lotus files in place")
+	fmtCheck := flag.Bool("fmt-check", false, "Check formatting, exit 1 if unformatted")
 
 	flag.Usage = printHelp
 	flag.Parse()
@@ -84,6 +89,13 @@ func main() {
 			fmt.Fprintln(os.Stderr, "build error:", err)
 			os.Exit(1)
 		}
+
+	case *fmtFlag || *fmtCheck:
+		args := flag.Args()
+		if len(args) == 0 {
+			args = findLotusFiles(".")
+		}
+		runFmt(args, *fmtCheck)
 
 	default:
 		if err := validateEngine(*engine); err != nil {
@@ -335,4 +347,80 @@ func printHelp() {
 	fmt.Println("  lotus --dis --annotated program.lotus")
 	fmt.Println("  lotus --console")
 	fmt.Println("  lotus --version")
+}
+
+// runFmt formats each file. If checkOnly is true it reports unformatted
+// files and exits 1 without writing, suitable for CI.
+func runFmt(paths []string, checkOnly bool) {
+	unformatted := 0
+	for _, path := range paths {
+		changed, err := fmtFile(path, checkOnly)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "fmt: %s: %s\n", path, err)
+			continue
+		}
+		if changed {
+			unformatted++
+			if checkOnly {
+				fmt.Fprintf(os.Stderr, "unformatted: %s\n", path)
+			} else {
+				fmt.Printf("formatted:   %s\n", path)
+			}
+		}
+	}
+	if checkOnly && unformatted > 0 {
+		os.Exit(1)
+	}
+}
+
+// fmtFile formats a single .lotus file.
+// Returns (true, nil) if the file was changed (or would be changed in check mode).
+func fmtFile(path string, checkOnly bool) (bool, error) {
+	if filepath.Ext(path) != ".lotus" {
+		return false, fmt.Errorf("not a .lotus file")
+	}
+
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+
+	l := lexer.New(string(src))
+	p := parser.New(l)
+	program := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		return false, fmt.Errorf("parse error: %s", errs[0])
+	}
+
+	formatted := formatter.Format(program, l.Comments)
+
+	// If nothing changed, nothing to do.
+	if bytes.Equal(src, []byte(formatted)) {
+		return false, nil
+	}
+
+	if checkOnly {
+		return true, nil
+	}
+
+	// Write formatted output back to the file.
+	if err := os.WriteFile(path, []byte(formatted), 0644); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// findLotusFiles returns all .lotus files under root recursively.
+func findLotusFiles(root string) []string {
+	var files []string
+	filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if !d.IsDir() && filepath.Ext(path) == ".lotus" {
+			files = append(files, path)
+		}
+		return nil
+	})
+	return files
 }
