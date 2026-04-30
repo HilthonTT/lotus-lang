@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"runtime"
+	"strings"
 )
 
 const (
@@ -20,6 +21,19 @@ type Info struct {
 	GoOS       string `json:"go_os"`
 	GoArch     string `json:"go_arch"`
 	BuildFlags string `json:"build_flags,omitempty"`
+}
+
+func (i Info) String() string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "lotus version %s\n", i.Version)
+	fmt.Fprintf(&b, "  Commit:     %s\n", i.GitCommit)
+	fmt.Fprintf(&b, "  Go version: %s\n", i.GoVersion)
+	fmt.Fprintf(&b, "  Platform:   %s", i.GoOS)
+	return b.String()
+}
+
+func (i Info) Short() string {
+	return i.Version
 }
 
 func GetVersionInfo() Info {
@@ -44,4 +58,12 @@ func GetVersionJSON() string {
 		return fmt.Sprintf("Error marshaling version info: %v", err)
 	}
 	return string(jsonBytes)
+}
+
+func IsDev() bool {
+	return Version == "dev"
+}
+
+func IsDirty() bool {
+	return strings.HasSuffix(Version, "-dirty")
 }

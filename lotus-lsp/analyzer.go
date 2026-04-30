@@ -265,6 +265,16 @@ func NewAnalyzer() *Analyzer {
 				{"escape", "Regex.escape(str) -> string", "Escapes special regex characters."},
 				{"count", "Regex.count(pattern, str) -> int", "Returns number of matches."},
 			},
+			"HttpClient": {
+				{"get", "HttpClient.get(url, headers?) -> Response", "HTTP GET request."},
+				{"post", "HttpClient.post(url, body, headers?) -> Response", "HTTP POST request."},
+				{"put", "HttpClient.put(url, body, headers?) -> Response", "HTTP PUT request."},
+				{"patch", "HttpClient.patch(url, body, headers?) -> Response", "HTTP PATCH request."},
+				{"delete", "HttpClient.delete(url, headers?) -> Response", "HTTP DELETE request."},
+				{"request", "HttpClient.request(method, url, body?, headers?) -> Response", "Generic HTTP request."},
+				{"json", "HttpClient.json(response) -> value", "Parse response body as JSON."},
+				{"setTimeout", "HttpClient.setTimeout(ms: int)", "Set request timeout in milliseconds."},
+			},
 		},
 	}
 }

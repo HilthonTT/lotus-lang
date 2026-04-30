@@ -1,0 +1,124 @@
+// ── HttpClient examples ───────────────────────────────────────────────────────
+
+// Basic GET
+let res = HttpClient.get("https://jsonplaceholder.typicode.com/todos/1")
+print("Status:", str(res["status"]))
+print("OK:", str(res["ok"]))
+print("Body:", res["body"])
+
+// Parse JSON response body
+let todo = HttpClient.json(res)
+print("Title:", todo["title"])
+print("Done:", str(todo["completed"]))
+
+// GET with headers
+let authRes = HttpClient.get(
+    "https://api.example.com/profile",
+    {
+        "Authorization": "Bearer my-token",
+        "Accept": "application/json"
+    }
+)
+print("Auth status:", str(authRes["status"]))
+
+// POST with a map body (auto-serialized to JSON)
+let postRes = HttpClient.post(
+    "https://jsonplaceholder.typicode.com/posts",
+    {
+        "title": "Hello from Lotus",
+        "body":  "This was posted using the Lotus HttpClient package",
+        "userId": 1
+    }
+)
+print("Created:", str(postRes["status"]))
+let created = HttpClient.json(postRes)
+print("New ID:", str(created["id"]))
+
+// POST with a raw string body
+let rawRes = HttpClient.post(
+    "https://httpbin.org/post",
+    "raw string body",
+    {"Content-Type": "text/plain"}
+)
+print("Raw post status:", str(rawRes["status"]))
+
+// PUT
+let putRes = HttpClient.put(
+    "https://jsonplaceholder.typicode.com/posts/1",
+    {"title": "Updated title", "body": "Updated body", "userId": 1}
+)
+print("PUT status:", str(putRes["status"]))
+
+// PATCH
+let patchRes = HttpClient.patch(
+    "https://jsonplaceholder.typicode.com/posts/1",
+    {"title": "Patched title"}
+)
+print("PATCH status:", str(patchRes["status"]))
+
+// DELETE
+let delRes = HttpClient.delete("https://jsonplaceholder.typicode.com/posts/1")
+print("DELETE status:", str(delRes["status"]))
+print("DELETE ok:", str(delRes["ok"]))
+
+// Generic request (any method)
+let customRes = HttpClient.request(
+    "GET",
+    "https://jsonplaceholder.typicode.com/users/1"
+)
+let user = HttpClient.json(customRes)
+print("User name:", user["name"])
+print("User email:", user["email"])
+
+// Build a URL with query params
+let url = HttpClient.buildUrl(
+    "https://jsonplaceholder.typicode.com/posts",
+    {"userId": "1", "_limit": "3"}
+)
+print("Built URL:", url)
+let listRes = HttpClient.get(url)
+let posts = HttpClient.json(listRes)
+print("Posts count:", str(len(posts)))
+for post in posts {
+    print(" -", post["title"])
+}
+
+// Access response headers
+let headersRes = HttpClient.get("https://jsonplaceholder.typicode.com/todos/1")
+let headers = headersRes["headers"]
+print("Content-Type:", headers["content-type"])
+
+// Error handling with try/catch
+try {
+    let badRes = HttpClient.get("https://this-domain-does-not-exist-12345.com")
+    if !badRes["ok"] {
+        print("Request failed:", badRes["error"])
+    }
+} catch err {
+    print("Network error:", str(err))
+}
+
+// Set a custom timeout (5 seconds)
+HttpClient.setTimeout(5000)
+let timedRes = HttpClient.get("https://jsonplaceholder.typicode.com/todos/1")
+print("With timeout:", str(timedRes["ok"]))
+
+// Using Result type pattern with HttpClient
+fn fetchUser(id) {
+    let res = HttpClient.get("https://jsonplaceholder.typicode.com/users/" + str(id))
+    if !res["ok"] {
+        return err("HTTP " + str(res["status"]) + ": " + res["error"])
+    }
+    let data = HttpClient.json(res)
+    if data == nil {
+        return err("failed to parse JSON")
+    }
+    return ok(data)
+}
+
+let result = fetchUser(1)
+if result.ok {
+    print("Fetched:", result.value["name"])
+} else {
+    print("Error:", result.error)
+}
