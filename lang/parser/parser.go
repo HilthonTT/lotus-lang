@@ -159,7 +159,7 @@ func (p *Parser) expectPeek(t token.TokenType) bool {
 	return false
 }
 
-// ParseProgram used to parse the whole progra
+// ParseProgram used to parse the whole program
 func (p *Parser) ParseProgram() *ast.Program {
 	program := &ast.Program{}
 	program.Statements = []ast.Statement{}
