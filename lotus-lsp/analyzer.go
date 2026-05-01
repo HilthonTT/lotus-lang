@@ -76,6 +76,11 @@ func NewAnalyzer() *Analyzer {
 			{"isErr", "isErr(result) -> bool", "Returns true if the Result is an error."},
 			{"unwrap", "unwrap(result) -> value", "Returns the value inside ok(), or throws if err()."},
 			{"unwrapOr", "unwrapOr(result, default) -> value", "Returns value if ok(), otherwise returns default."},
+			{"assert", "assert(condition, message?) -> nil", "Throws if condition is falsy."},
+			{"assertEq", "assertEq(a, b, message?) -> nil", "Throws if a != b, printing both values."},
+			{"assertNotEq", "assertNotEq(a, b, message?) -> nil", "Throws if a == b, printing both values."},
+			{"assertNil", "assertNil(value, message?) -> nil", "Throws if value is nil, printing the value."},
+			{"assertNotNil", "assertNotNil(value, message?) -> nil", "Throws if value is not nil, printing the value."},
 		},
 		packages: map[string][]packageMember{
 			"Console": {

@@ -21,6 +21,7 @@ var registeredPackages = []packageEntry{
 	{"File", filePackage()},
 	{"Regex", regexPackage()},
 	{"HttpClient", httpClientPackage()},
+	{"Env", envPackage()},
 }
 
 // BuiltinPackageOrder and BuiltinPackages are derived from registeredPackages.

@@ -200,7 +200,7 @@
     },
     "packages": {
       "name": "support.class.lotus",
-      "match": "\\b(Console|Math|OS|Task|String|Array|Time|Json|File|Regex|HttpClient)\\b(?=[.?])"
+      "match": "\\b(Console|Math|OS|Task|String|Array|Time|Json|File|Regex|HttpClient|Env)\\b(?=[.?])"
     },
     "class-instantiation": {
       "match": "\\b([A-Z][a-zA-Z0-9_]*)\\s*(?=\\()",

@@ -1,19 +1,12 @@
 package lexer
 
-import (
-	"fmt"
-	"unicode"
-	"unicode/utf8"
-
-	"github.com/hilthontt/lotus/token"
-)
+import "github.com/hilthontt/lotus/token"
 
 type Lexer struct {
 	position     int
 	readPosition int
 	ch           rune
 	characters   []rune
-	prevToken    token.Token
 	line         int
 	col          int
 	Comments     []CommentToken
@@ -45,25 +38,6 @@ func Tokenize(input string) []token.Token {
 		}
 	}
 	return tokens
-}
-
-func (l *Lexer) readChar() {
-	if l.readPosition >= len(l.characters) {
-		l.ch = rune(0)
-	} else {
-		l.ch = l.characters[l.readPosition]
-	}
-	l.position = l.readPosition
-	l.readPosition++
-	l.col++
-}
-
-func (l *Lexer) peekChar() rune {
-	if l.readPosition >= len(l.characters) {
-		return 0
-	}
-	r, _ := utf8.DecodeRuneInString(string(l.characters[l.readPosition:]))
-	return r
 }
 
 func (l *Lexer) NextToken() token.Token {
@@ -115,6 +89,7 @@ func (l *Lexer) NextToken() token.Token {
 			tok.Type = token.MINUS
 			tok.Literal = "-"
 		}
+
 	case '!':
 		if l.peekChar() == '=' {
 			tok.Type = token.NOTEQ
@@ -268,7 +243,7 @@ func (l *Lexer) NextToken() token.Token {
 		tok.Literal = ":"
 
 	case '.':
-		if l.peekChar() == '.' && l.characters[l.readPosition+1] == '.' {
+		if l.peekChar() == '.' && l.readPosition+1 < len(l.characters) && l.characters[l.readPosition+1] == '.' {
 			l.readChar()
 			l.readChar()
 			tok.Type = token.ELLIPSIS
@@ -303,8 +278,14 @@ func (l *Lexer) NextToken() token.Token {
 		tok.Literal = "]"
 
 	case '"':
-		tok.Type = token.STRING
-		tok.Literal = l.readString()
+		if l.peekChar() == '"' && len(l.characters) > l.readPosition+1 && l.characters[l.readPosition+1] == '"' {
+			// Tripe-quoted string
+			tok.Type = token.STRING
+			tok.Literal = l.readTripleString()
+		} else {
+			tok.Type = token.STRING
+			tok.Literal = l.readString()
+		}
 
 	case 0:
 		tok.Type = token.EOF
@@ -325,119 +306,6 @@ func (l *Lexer) NextToken() token.Token {
 	}
 
 	l.readChar()
-	l.prevToken = tok
+
 	return tok
-}
-
-func (l *Lexer) skipWhitespaceAndComments() {
-	for {
-		l.skipWhitespace()
-		if l.ch == '/' && l.peekChar() == '/' {
-			commentLine := l.line
-			var buf []rune
-
-			for l.ch != '\n' && l.ch != 0 {
-				buf = append(buf, l.ch)
-				l.readChar()
-			}
-
-			l.Comments = append(l.Comments, CommentToken{
-				Line: commentLine,
-				Text: string(buf),
-			})
-
-			continue
-		}
-		break
-	}
-}
-
-func (l *Lexer) skipWhitespace() {
-	for isWhitespace(l.ch) {
-		if l.ch == '\n' {
-			l.line++
-			l.col = 0
-		}
-		l.readChar()
-	}
-}
-
-func (l *Lexer) readIdentifier() string {
-	start := l.position
-	for isLetter(l.ch) || isDigit(l.ch) {
-		l.readChar()
-	}
-	return string(l.characters[start:l.position])
-}
-
-func (l *Lexer) readString() string {
-	l.readChar() // skip opening "
-	var buf []byte
-
-	for l.ch != '"' && l.ch != 0 {
-		if l.ch == '\\' {
-			l.readChar()
-			switch l.ch {
-			case 'n':
-				buf = append(buf, '\n')
-			case 't':
-				buf = append(buf, '\t')
-			case 'r':
-				buf = append(buf, '\r')
-			case '\\':
-				buf = append(buf, '\\')
-			case '"':
-				buf = append(buf, '"')
-			default:
-				buf = append(buf, '\\')
-				buf = append(buf, byte(l.ch))
-			}
-		} else {
-			buf = append(buf, byte(l.ch))
-		}
-		l.readChar()
-	}
-
-	return string(buf)
-}
-
-func (l *Lexer) readNumber() token.Token {
-	tok := token.Token{Line: l.line, Col: l.col}
-	start := l.position
-	isFloat := false
-
-	for isDigit(l.ch) {
-		l.readChar()
-	}
-	if l.ch == '.' && isDigit(l.peekChar()) {
-		isFloat = true
-		l.readChar()
-		for isDigit(l.ch) {
-			l.readChar()
-		}
-	}
-
-	tok.Literal = string(l.characters[start:l.position])
-	if isFloat {
-		tok.Type = token.FLOAT
-	} else {
-		tok.Type = token.INT
-	}
-	return tok
-}
-
-func isWhitespace(ch rune) bool {
-	return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r'
-}
-
-func isLetter(ch rune) bool {
-	return unicode.IsLetter(ch) || ch == '_'
-}
-
-func isDigit(ch rune) bool {
-	return ch >= '0' && ch <= '9'
-}
-
-func (l *Lexer) Errorf(format string, args ...any) string {
-	return fmt.Sprintf("line %d, col %d: %s", l.line, l.col, fmt.Sprintf(format, args...))
 }

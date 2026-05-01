@@ -1,0 +1,10 @@
+let randomvalue = ""
+
+let err = assert(randomvalue, "The value is nil!")
+if err != nil {
+    print(err)
+    OS.exit(-1)
+}
+
+print("Passed!")
+

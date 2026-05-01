@@ -285,6 +285,98 @@ var Builtins = []BuiltinDef{
 			return r.Value
 		},
 	},
+	{
+		Name: "assertNil",
+		Fn: func(args ...object.Object) object.Object {
+			if len(args) < 1 {
+				return &object.Nil{}
+			}
+			if args[0].Type() == object.NIL_OBJ {
+				return &object.Nil{}
+			}
+			msg := fmt.Sprintf("expected nil, got %s", args[0].Inspect())
+			if len(args) >= 2 {
+				if s, ok := args[1].(*object.String); ok {
+					msg = s.Value + ": " + msg
+				}
+			}
+			return &object.LotusError{Message: msg}
+		},
+	},
+	{
+		Name: "assertNotNil",
+		Fn: func(args ...object.Object) object.Object {
+			if len(args) < 1 {
+				return &object.Nil{}
+			}
+			if args[0].Type() != object.NIL_OBJ {
+				return &object.Nil{}
+			}
+			msg := "expected non-nil value"
+			if len(args) >= 2 {
+				if s, ok := args[1].(*object.String); ok {
+					msg = s.Value
+				}
+			}
+			return &object.LotusError{Message: msg}
+		},
+	},
+	{
+		Name: "assertNotEq",
+		Fn: func(args ...object.Object) object.Object {
+			if len(args) < 2 {
+				return &object.Nil{}
+			}
+			a, b := args[0], args[1]
+			if a.Inspect() != b.Inspect() {
+				return &object.Nil{}
+			}
+			msg := fmt.Sprintf("expected %s to not equal %s", a.Inspect(), b.Inspect())
+			if len(args) >= 3 {
+				if s, ok := args[2].(*object.String); ok {
+					msg = s.Value + ": " + msg
+				}
+			}
+			return &object.LotusError{Message: msg}
+		},
+	},
+	{
+		Name: "assertEq",
+		Fn: func(args ...object.Object) object.Object {
+			if len(args) < 2 {
+				return &object.Nil{}
+			}
+			a, b := args[0], args[1]
+			if a.Inspect() == b.Inspect() {
+				return &object.Nil{}
+			}
+			msg := fmt.Sprintf("expected %s to equal %s", a.Inspect(), b.Inspect())
+			if len(args) >= 3 {
+				if s, ok := args[2].(*object.String); ok {
+					msg = s.Value + ": " + msg
+				}
+			}
+			return &object.LotusError{Message: msg}
+		},
+	},
+	{
+		Name: "assert",
+		Fn: func(args ...object.Object) object.Object {
+			if len(args) < 1 {
+				return &object.Nil{}
+			}
+			if object.IsTruthy(args[0]) {
+				return &object.Nil{}
+			}
+			msg := "assertion failed"
+			if len(args) >= 2 {
+				if s, ok := args[1].(*object.String); ok {
+					msg = s.Value
+				}
+			}
+			return &object.LotusError{Message: msg}
+		},
+	},
 }
 
 func builtinIndex(name string) int {
