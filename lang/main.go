@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/hilthontt/lotus/ast"
 	"github.com/hilthontt/lotus/code"
@@ -36,6 +37,7 @@ func main() {
 	compile := flag.Bool("compile", false, "Compile .lotus to .lotusbc without running")
 	fmtFlag := flag.Bool("fmt", false, "Format .lotus files in place")
 	fmtCheck := flag.Bool("fmt-check", false, "Check formatting, exit 1 if unformatted")
+	watch := flag.Bool("watch", false, "Re-run file on every save")
 
 	flag.Usage = printHelp
 	flag.Parse()
@@ -48,13 +50,10 @@ func main() {
 		fmt.Println(version.GetVersionString())
 
 	case *console:
-		if err := validateEngine(*engine); err != nil {
-			fatal(err.Error())
-		}
+		mustValidateEngine(*engine)
 		repl.Start(os.Stdin, os.Stdout, engine)
 
 	case *compile:
-		// lotus --compile file.lotus  →  writes file.lotusbc
 		if len(flag.Args()) != 1 {
 			fatal("usage: lotus --compile <file.lotus>")
 		}
@@ -67,25 +66,13 @@ func main() {
 		disassembleFile(flag.Args()[0], *annotated)
 
 	case *playground:
-		if err := validateEngine(*engine); err != nil {
-			fatal(err.Error())
-		}
+		mustValidateEngine(*engine)
 		startPlayground(*playgroundAddr, *engine)
 
 	case *buildOut != "":
-		src, output := *buildOut, *buildOut
-		if strings.HasSuffix(output, ".lotus") {
-			output = ""
-		} else {
-			if len(flag.Args()) != 1 {
-				fatal("usage: lotus --build [output.exe] <file.lotus>")
-			}
-			src = flag.Args()[0]
-		}
-		if err := validateEngine(*engine); err != nil {
-			fatal(err.Error())
-		}
-		if err := executable.BuildExecutable(src, output, *engine); err != nil {
+		mustValidateEngine(*engine)
+		src, out := resolveBuildPaths(*buildOut, flag.Args())
+		if err := executable.BuildExecutable(src, out, *engine); err != nil {
 			fmt.Fprintln(os.Stderr, "build error:", err)
 			os.Exit(1)
 		}
@@ -97,10 +84,15 @@ func main() {
 		}
 		runFmt(args, *fmtCheck)
 
-	default:
-		if err := validateEngine(*engine); err != nil {
-			fatal(err.Error())
+	case *watch:
+		mustValidateEngine(*engine)
+		if len(flag.Args()) != 1 {
+			fatal("usage: lotus --watch <file.lotus>")
 		}
+		watchFile(flag.Args()[0], *engine)
+
+	default:
+		mustValidateEngine(*engine)
 		if len(flag.Args()) != 1 {
 			fatal("usage: lotus [options] <file>")
 		}
@@ -108,11 +100,26 @@ func main() {
 	}
 }
 
-func validateEngine(engine string) error {
-	if engine != "vm" && engine != "eval" {
-		return fmt.Errorf("unknown engine %q — must be \"vm\" or \"eval\"", engine)
+// resolveBuildPaths returns (srcFile, outputFile) from the --build flag value
+// and any remaining positional args.
+//
+//   - lotus --build out.exe file.lotus  →  src=file.lotus, out=out.exe
+//   - lotus --build file.lotus          →  src=file.lotus, out="" (executable derives name)
+func resolveBuildPaths(buildFlag string, args []string) (src, out string) {
+	if strings.HasSuffix(buildFlag, ".lotus") {
+		// --build was given the source file directly; no separate output path.
+		return buildFlag, ""
 	}
-	return nil
+	if len(args) != 1 {
+		fatal("usage: lotus --build [output.exe] <file.lotus>")
+	}
+	return args[0], buildFlag
+}
+
+func mustValidateEngine(engine string) {
+	if engine != "vm" && engine != "eval" {
+		fatal(fmt.Sprintf("unknown engine %q — must be \"vm\" or \"eval\"", engine))
+	}
 }
 
 func fatal(msg string) {
@@ -122,30 +129,27 @@ func fatal(msg string) {
 
 // runFile runs a .lotus or a pre-compiled .lotusbc file.
 func runFile(filePath, engine string) {
+	absPath, _ := filepath.Abs(filePath)
 	ext := filepath.Ext(filePath)
 
-	absPath, _ := filepath.Abs(filePath)
-
 	var result object.Object
-	if ext == ".lotusbc" {
-		// Run pre-compiled bytecode directly.
+	switch ext {
+	case ".lotusbc":
 		bc, err := compiler.ReadBytecode(filePath)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			os.Exit(1)
 		}
 		result = runBytecode(bc, absPath)
-	} else {
-		// Parse + compile + run.
-		if ext != ".lotus" {
-			fatal(fmt.Sprintf("%q is not a .lotus file", filePath))
-		}
+	case ".lotus":
 		program := mustParse(filePath)
 		if engine == "vm" {
 			result = compileBytecodeAndRun(program, absPath)
 		} else {
 			result = evaluateAst(program)
 		}
+	default:
+		fatal(fmt.Sprintf("%q is not a .lotus file", filePath))
 	}
 
 	if result != nil && result.Type() != object.NIL_OBJ {
@@ -217,12 +221,12 @@ func disassembleFile(filePath string, annotated bool) {
 	}
 }
 
+// mustParse lexes and parses a .lotus file, exiting on any error.
 func mustParse(filePath string) *ast.Program {
 	if filepath.Ext(filePath) != ".lotus" {
 		fmt.Fprintf(os.Stderr, "error: %q is not a .lotus file\n", filePath)
 		os.Exit(1)
 	}
-	fmt.Println(filePath)
 	contents, err := os.ReadFile(filePath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: could not read %q: %s\n", filePath, err)
@@ -246,11 +250,10 @@ func evaluateAst(program *ast.Program) object.Object {
 	return evaluator.Eval(program, env)
 }
 
-// runBytecode runs a pre-loaded Bytecode (from .lotusbc) through the VM.
-func runBytecode(bc *compiler.Bytecode, filePath string) object.Object {
-	absPath, _ := filepath.Abs(filePath)
-	loader := makeModuleLoaderFrom(absPath)
-	machine := vm.NewWithLoader(bc, loader)
+// runBytecode runs a pre-loaded Bytecode through the VM.
+// absPath must already be resolved by the caller.
+func runBytecode(bc *compiler.Bytecode, absPath string) object.Object {
+	machine := vm.NewWithLoader(bc, makeModuleLoaderFrom(absPath))
 	machine.SetFilePath(absPath)
 	if err := machine.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "vm error:", err)
@@ -259,16 +262,16 @@ func runBytecode(bc *compiler.Bytecode, filePath string) object.Object {
 	return machine.LastPoppedStackElement()
 }
 
-func compileBytecodeAndRun(program *ast.Program, filePath string) object.Object {
+// compileBytecodeAndRun compiles a parsed program and runs it through the VM.
+// absPath must already be resolved by the caller.
+func compileBytecodeAndRun(program *ast.Program, absPath string) object.Object {
 	comp := compiler.New()
 	if err := comp.Compile(program); err != nil {
 		fmt.Fprintln(os.Stderr, "compiler error:", err)
 		os.Exit(1)
 	}
-	absPath, _ := filepath.Abs(filePath)
-	loader := makeModuleLoaderFrom(absPath)
-	machine := vm.NewWithLoader(comp.Bytecode(), loader)
-	machine.SetFilePath(absPath) // ← enables stack traces
+	machine := vm.NewWithLoader(comp.Bytecode(), makeModuleLoaderFrom(absPath))
+	machine.SetFilePath(absPath)
 	if err := machine.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "vm error:", err)
 		os.Exit(1)
@@ -289,7 +292,6 @@ func makeModuleLoaderFrom(entryPath string) vm.ModuleLoader {
 			return mod, nil
 		}
 
-		// Support importing pre-compiled .lotusbc modules too.
 		var bc *compiler.Bytecode
 		if filepath.Ext(path) == ".lotusbc" {
 			var err error
@@ -336,6 +338,9 @@ func printHelp() {
 	fmt.Println("  lotus --compile <file.lotus>     Compile to .lotusbc")
 	fmt.Println("  lotus --dis <file>               Disassemble")
 	fmt.Println("  lotus --dis --annotated <file>   Disassemble with comments")
+	fmt.Println("  lotus --fmt [files...]           Format in place")
+	fmt.Println("  lotus --fmt-check [files...]     Check formatting (CI)")
+	fmt.Println("  lotus --watch <file.lotus>       Re-run on every save")
 	fmt.Println("  lotus --console                  Interactive REPL")
 	fmt.Println()
 	fmt.Println("Options:")
@@ -343,8 +348,9 @@ func printHelp() {
 	fmt.Println()
 	fmt.Println("Examples:")
 	fmt.Println("  lotus program.lotus")
+	fmt.Println("  lotus --watch program.lotus")
+	fmt.Println("  lotus --fmt")
 	fmt.Println("  lotus --compile program.lotus && lotus program.lotusbc")
-	fmt.Println("  lotus --dis --annotated program.lotus")
 	fmt.Println("  lotus --console")
 	fmt.Println("  lotus --version")
 }
@@ -379,31 +385,23 @@ func fmtFile(path string, checkOnly bool) (bool, error) {
 	if filepath.Ext(path) != ".lotus" {
 		return false, fmt.Errorf("not a .lotus file")
 	}
-
 	src, err := os.ReadFile(path)
 	if err != nil {
 		return false, err
 	}
-
 	l := lexer.New(string(src))
 	p := parser.New(l)
 	program := p.ParseProgram()
 	if errs := p.Errors(); len(errs) > 0 {
 		return false, fmt.Errorf("parse error: %s", errs[0])
 	}
-
 	formatted := formatter.Format(program, l.Comments)
-
-	// If nothing changed, nothing to do.
 	if bytes.Equal(src, []byte(formatted)) {
 		return false, nil
 	}
-
 	if checkOnly {
 		return true, nil
 	}
-
-	// Write formatted output back to the file.
 	if err := os.WriteFile(path, []byte(formatted), 0644); err != nil {
 		return false, err
 	}
@@ -423,4 +421,34 @@ func findLotusFiles(root string) []string {
 		return nil
 	})
 	return files
+}
+
+// watchFile runs filePath every time it changes on disk.
+// It polls for changes (no external dependencies needed).
+// Ctrl+C exits cleanly.
+func watchFile(filePath, engine string) {
+	absPath, err := filepath.Abs(filePath)
+	if err != nil {
+		fatal("watch: " + err.Error())
+	}
+
+	fmt.Printf("\033[2m  watching %s — press Ctrl+C to stop\033[0m\n\n", filepath.Base(filePath))
+
+	var lastMod time.Time
+	for {
+		info, err := os.Stat(absPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "watch: %s\n", err)
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
+		if !info.ModTime().Equal(lastMod) {
+			if !lastMod.IsZero() {
+				fmt.Printf("\n\033[2m─── %s ───\033[0m\n\n", time.Now().Format("15:04:05"))
+			}
+			lastMod = info.ModTime()
+			runFile(absPath, engine)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
 }
